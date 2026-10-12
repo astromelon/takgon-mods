@@ -2,8 +2,9 @@ import { createTranslator } from '../shared/i18n'
 
 /** M7 기본(ko) 사전. 키 목록의 단일 출처다. */
 const ko = {
-  'cmd.description': '인수인계 문서 생성·보기·다음 프롬프트에 첨부',
-  'cmd.usage': '사용법: /handoff (지금 생성) | /handoff show | /handoff load',
+  'cmd.description': '인수인계 문서 생성·보기·다음 프롬프트에 첨부, 자동 생성 임계치 설정',
+  'cmd.usage': '사용법: /handoff (지금 생성) | /handoff show | /handoff load | /handoff threshold [1-99]',
+  'cmd.threshold': '자동 인수인계 임계치: 컨텍스트 {value}%',
   'cmd.off': 'handoff 모듈이 꺼져 있습니다. /mods handoff on 으로 켤 수 있습니다.',
   'cmd.saved': '인수인계 문서를 저장했습니다: {path}',
   'cmd.failed': '인수인계 문서를 만들지 못했습니다({reason}).',
@@ -35,7 +36,8 @@ export type HandoffMessageKey = keyof typeof ko
 
 const en: Record<HandoffMessageKey, string> = {
   'cmd.description': 'Create, show, or attach a handoff note to the next prompt',
-  'cmd.usage': 'Usage: /handoff (create now) | /handoff show | /handoff load',
+  'cmd.usage': 'Usage: /handoff (create now) | /handoff show | /handoff load | /handoff threshold [1-99]',
+  'cmd.threshold': 'Auto handoff threshold: {value}% of context',
   'cmd.off': 'The handoff module is off. Turn it on with /mods handoff on.',
   'cmd.saved': 'Saved the handoff note: {path}',
   'cmd.failed': 'Could not create the handoff note ({reason}).',

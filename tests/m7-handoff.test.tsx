@@ -5,8 +5,10 @@ import {
   buildForkPrompt,
   formatStamp,
   handoffFileName,
+  parseHandoffArgs,
   shouldTrigger,
   summarize,
+  toThreshold,
 } from '../src/m7-handoff/logic'
 
 describe('handoff 순수 로직', () => {
@@ -22,6 +24,25 @@ describe('handoff 순수 로직', () => {
     expect(shouldTrigger(75, false)).toBe(true)
     expect(shouldTrigger(90, true)).toBe(false)
     expect(shouldTrigger(undefined, false)).toBe(false)
+    expect(shouldTrigger(10, false, 10)).toBe(true)
+    expect(shouldTrigger(9, false, 10)).toBe(false)
+  })
+
+  test('임계치는 1~99 정수만, 그 밖은 기본 75', () => {
+    expect(toThreshold(undefined)).toBe(75)
+    expect(toThreshold(30)).toBe(30)
+    expect(toThreshold(0)).toBe(75)
+    expect(toThreshold(100)).toBe(75)
+    expect(toThreshold(12.5)).toBe(75)
+    expect(toThreshold('30')).toBe(75)
+  })
+
+  test('/handoff threshold 인자 해석', () => {
+    expect(parseHandoffArgs('threshold')).toEqual({ kind: 'threshold', value: null })
+    expect(parseHandoffArgs('threshold 30')).toEqual({ kind: 'threshold', value: 30 })
+    expect(parseHandoffArgs('threshold 0')).toBe('usage')
+    expect(parseHandoffArgs('threshold abc')).toBe('usage')
+    expect(parseHandoffArgs('show')).toBe('show')
   })
 
   test('프롬프트에 섹션과 핀·PR·이슈·미완료 작업을 넣는다', () => {
@@ -154,6 +175,22 @@ describe('자동 트리거', () => {
 
     const out = await $.command.run({ command: 'handoff', args: '', ...RUN })
     expect(out.text).toContain('nothing-to-fork')
+  })
+})
+
+describe('임계치 설정', () => {
+  test('/handoff threshold로 바꾼 임계치에서 자동 생성하고, 인자 없이 부르면 현재 값을 보여준다', async ($, on) => {
+    const world = engine(on)
+    const clock = mock.clock(on, { now: new Date(2026, 9, 12, 9, 5).getTime() })
+    await $.session.start(START)
+
+    expect((await $.command.run({ command: 'handoff', args: 'threshold', ...RUN })).text).toContain('75%')
+    expect((await $.command.run({ command: 'handoff', args: 'threshold 20', ...RUN })).text).toContain('20%')
+
+    world.percent.value = 25
+    await $.turn.complete(TURN)
+    await clock.settle()
+    expect(world.forks).toHaveLength(1)
   })
 })
 
