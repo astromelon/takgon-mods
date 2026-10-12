@@ -6,9 +6,9 @@
 ## [Unreleased]
 
 ### Changed
-- CI: `probe_classic`을 실패해도 CI 결과에 영향 없는 진단 단계(`continue-on-error`)로 돌리고, e2e debug 로그를 `e2e-debug-logs` artifact로 업로드하며 보안 플러그인 seat 줄(`seated`·`sec-default`)을 로그에 출력한다. CI 러너에서 bypass가 재현되지 않는 원인(`cc-plugin-sec-default` 미배치 추정)을 확정하기 위한 임시 단계.
+- CI: 임시 진단(`probe_classic` 비차단 실행, debug 로그 artifact 업로드)으로 원인을 확정한 뒤 해당 단계를 제거. `cc-plugin-sec-default`가 로그인 없는 CI 러너에서는 놓이지 않아 `classic.*` 훅 bypass가 재현되지 않는다(`not seated: no managed settings and not a Team or Enterprise organization`).
 - `tools/e2e/README.md`: `probe_classic`을 CI 제외·로컬 전용으로 표시.
-- `docs/engine-constraints.md` 1번: CI 러너에서 bypass가 재현되지 않는 원인 추정을 `cc-plugin-sec-default`가 Team·Enterprise 조직이나 managed settings가 있을 때만 맨 바깥에 놓이는 것으로 정정(CI 로그는 미확인).
+- `docs/engine-constraints.md` 1번: CI 러너에서 bypass가 재현되지 않는 CI 러너에서 bypass가 재현되지 않는 원인을 CI debug 로그로 확인한 사실로 기록(`cc-plugin-sec-default`는 Team·Enterprise 조직이나 managed settings가 있을 때만 맨 바깥에 놓임).
 
 ## [0.4.1] - 2026-10-12
 
