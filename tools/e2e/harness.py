@@ -49,11 +49,13 @@ def find_claude() -> str:
     raise SystemExit("claude 실행 파일을 찾지 못했습니다.")
 
 
-def find_store() -> Path:
+def find_store(required: bool = True) -> Path | None:
     """takgon-mods 플러그인 store 파일(`~/.claude/plugins/store/takgon-mods_*.json`)."""
     matches = glob.glob(str(Path.home() / ".claude" / "plugins" / "store" / "takgon-mods_*.json"))
     if not matches:
-        raise SystemExit("takgon-mods store 파일이 없습니다. 플러그인을 설치하고 한 번 실행하세요.")
+        if required:
+            raise SystemExit("takgon-mods store 파일이 없습니다. 플러그인을 설치하고 한 번 실행하세요.")
+        return None
     return Path(max(matches, key=os.path.getmtime))
 
 
@@ -116,8 +118,54 @@ class Results:
         return bool(ok)
 
     @property
+    def passed(self) -> int:
+        return sum(1 for _, ok, _ in self.items if ok)
+
+    @property
     def ok(self) -> bool:
         return bool(self.items) and all(ok for _, ok, _ in self.items)
+
+
+class VirtualTerminal:
+    """pyte 기반 가상 터미널 화면 재구성 및 dirty 줄 수집기.
+
+    출력을 가상 터미널에 넣어 화면을 재구성한다. TUI는 이미 같은 글자가 있던 칸을 다시 보내지 않으므로
+    원시 출력만 보면 줄이 빠진다. 바뀐 줄(dirty)은 재구성된 줄 전체를 `lines`에 누적 기록한다.
+    """
+
+    def __init__(self, columns: int = 180, rows: int = 60) -> None:
+        self.columns = columns
+        self.rows = rows
+        self.vt = pyte.Screen(columns, rows)
+        self.vt.dirty.clear()
+        self.vt_stream = pyte.Stream(self.vt)
+        self.lines: list[str] = []
+        self.raw: list[str] = []
+
+    def feed(self, chunk: str) -> list[str]:
+        """청크의 비표준 CSI를 필터링하고 pyte에 유입시켜 변경된 줄 전체를 lines에 기록한다."""
+        self.raw.append(chunk)
+        self.vt_stream.feed(PRIVATE_CSI.sub("", chunk))
+        display = self.vt.display
+        new_lines: list[str] = []
+        for y in sorted(self.vt.dirty):
+            if 0 <= y < len(display):
+                line = display[y].rstrip()
+                self.lines.append(line)
+                new_lines.append(line)
+        self.vt.dirty.clear()
+        return new_lines
+
+    def display(self) -> str:
+        """지금 화면에 보이는 그대로."""
+        return "\n".join(row.rstrip() for row in self.vt.display)
+
+    def text(self, since: int = 0) -> str:
+        """`since` 이후 화면에 그려진(바뀐) 줄."""
+        return "\n".join(self.lines[since:])
+
+    def screen(self, since: int = 0) -> str:
+        return squash(self.text(since))
 
 
 class Session:
@@ -138,12 +186,11 @@ class Session:
         argv = [find_claude(), *args, "--debug-file", str(self.debug_path)]
         merged = {**os.environ, **(env or {})} if env else None
         self.proc = winpty.PtyProcess.spawn(argv, cwd=str(cwd), env=merged, dimensions=(rows, columns))
-        self.raw: list[str] = []
-        # 출력을 가상 터미널에 넣어 화면을 재구성한다. TUI는 이미 같은 글자가 있던 칸을 다시 보내지 않으므로
-        # 원시 출력만 보면 줄이 빠진다. 바뀐 줄(dirty)은 재구성된 줄 전체를 `lines`에 기록하고 판정은 이 기록으로 한다.
-        self.vt = pyte.Screen(columns, rows)
-        self.vt_stream = pyte.Stream(self.vt)
-        self.lines: list[str] = []
+        self.terminal = VirtualTerminal(columns, rows)
+        self.vt = self.terminal.vt
+        self.vt_stream = self.terminal.vt_stream
+        self.lines = self.terminal.lines
+        self.raw = self.terminal.raw
         self.lock = threading.Lock()
         threading.Thread(target=self._read, daemon=True).start()
 
@@ -154,13 +201,7 @@ class Session:
             except EOFError:
                 break
             with self.lock:
-                self.raw.append(chunk)
-                self.vt_stream.feed(PRIVATE_CSI.sub("", chunk))
-                display = self.vt.display
-                for y in sorted(self.vt.dirty):
-                    if 0 <= y < len(display):
-                        self.lines.append(display[y].rstrip())
-                self.vt.dirty.clear()
+                self.terminal.feed(chunk)
 
     def mark(self) -> int:
         """지금까지 기록된 화면 줄 수. 이후 `text(since)`·`wait_for(..., since)`는 이 뒤에 그려진 줄만 본다."""
@@ -170,15 +211,15 @@ class Session:
     def text(self, since: int = 0) -> str:
         """`since` 이후 화면에 그려진(바뀐) 줄. 스크롤로 다시 그려진 줄도 포함되므로 '없음' 판정은 화면을 비운 뒤에 한다."""
         with self.lock:
-            return "\n".join(self.lines[since:])
+            return self.terminal.text(since)
 
     def display(self) -> str:
         """지금 화면에 보이는 그대로."""
         with self.lock:
-            return "\n".join(row.rstrip() for row in self.vt.display)
+            return self.terminal.display()
 
     def screen(self, since: int = 0) -> str:
-        return squash(self.text(since))
+        return self.terminal.screen(since)
 
     def wait_for(self, text: str, since: int = 0, timeout: float = 25.0) -> bool:
         needle = squash(text)
@@ -284,30 +325,39 @@ class StoreGuard:
     """
 
     def __init__(self, projects: Iterable[Path] = (), global_keys: Iterable[str] = ()) -> None:
-        self.path = find_store()
+        self.path = find_store(required=False)
         self.pids = [project_id(p) for p in projects]
         self.keys = list(global_keys)
         self.saved: dict[str, object] = {}
 
     def _load(self) -> dict[str, object]:
+        if not self.path or not self.path.exists():
+            return {}
         with open(self.path, encoding="utf-8") as f:
             return json.load(f)
 
     def _save(self, data: dict[str, object]) -> None:
+        if not self.path:
+            return
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
 
     def seed(self, key: str, value: object) -> None:
+        if not self.path:
+            return
         data = self._load()
         data[key] = value
         self._save(data)
 
     def __enter__(self) -> "StoreGuard":
-        data = self._load()
-        self.saved = {k: data[k] for k in self.keys if k in data}
+        if self.path and self.path.exists():
+            data = self._load()
+            self.saved = {k: data[k] for k in self.keys if k in data}
         return self
 
     def __exit__(self, *exc: object) -> None:
+        if not self.path or not self.path.exists():
+            return
         data = self._load()
         for key in self.keys:
             if key in self.saved:

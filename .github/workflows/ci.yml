@@ -38,3 +38,18 @@ jobs:
 
       - name: Test plugin
         run: claude plugin test .
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install e2e dependencies
+        run: pip install -r tools/e2e/requirements.txt
+
+      # 하네스 단위 테스트(가상 터미널 재구성 및 비표준 CSI 필터)를 검증한다.
+      - name: Test e2e harness
+        run: python -m unittest discover -s tools/e2e -p "test_*.py"
+
+      # 엔진 제약 감시용 e2e probe 3개(bypass, catch, clear state)를 실행한다(모델 호출 없음).
+      - name: Run e2e probes
+        run: python tools/e2e/run.py probe_classic probe_catch probe_clear_state
