@@ -6,7 +6,7 @@
 ## [Unreleased]
 
 ### Added
-- `docs/issues/mermaid-cli-font-subset.md`: mermaid-cli 저장소용 개선 제안 초안(SVG에 쓰인 문자와 겹치는 `@font-face` 조각만 내장). 미제출.
+- `docs/issues/mermaid-cli-font-subset.md`: mermaid-cli 저장소용 개선 제안(SVG에 쓰인 문자와 겹치는 `@font-face` 조각만 내장). 제출: mermaid-js/mermaid-cli#1211.
 - `tools/e2e`: 실제 대화형 세션을 의사 터미널로 띄워 확인하는 E2E 하네스와 시나리오 10개(모델 미사용 5개 기본 실행), 엔진 제약 1·2·3번 감시용 probe 플러그인(`probe_classic`·`probe_clear_state`·`probe_catch`).
 - GitHub Actions CI(`.github/workflows/ci.yml`): push·PR마다 Windows에서 `claude plugin validate`·`claude plugin test` 실행(Claude Code 2.1.296 고정).
   테스트가 Windows 절대 경로(`C:/proj`)를 가정해 Linux에서는 실패하므로 Windows만 돌린다.
