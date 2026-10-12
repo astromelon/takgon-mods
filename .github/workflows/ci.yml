@@ -10,21 +10,19 @@ permissions:
 
 jobs:
   plugin:
-    name: validate · test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: validate · test (windows)
+    # 테스트가 프로젝트 루트를 Windows 절대 경로(C:/proj)로 가정하므로 Windows에서만 돌린다.
+    # Linux에서는 경로가 상대 경로로 해석돼 fs mock·Image 경로 검사가 어긋난다(플러그인 동작 문제는 아님).
+    runs-on: windows-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest]
     env:
       # 로그인 없이 동작한다(validate·test는 모델을 호출하지 않는다). 자동 업데이트와 부가 트래픽은 끈다.
       DISABLE_AUTOUPDATER: '1'
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
 
