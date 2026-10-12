@@ -1,11 +1,11 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, On } from 'claude-code'
+import type { CommandSpec, EngineInterface, On } from 'claude-code'
 
 import type { Lang, ModuleFlags } from '../types'
 import { t, toLang } from './shared/i18n'
 import type { MessageKey } from './shared/i18n'
 import { projectId } from './shared/keys'
-import { LANG_KEY, MODULES_KEY, parseModsArgs, toFlags } from './shared/settings'
+import { LANG_KEY, MODULES_KEY, markNotified, parseModsArgs, refusalReason, registerCause, toFlags } from './shared/settings'
 import { ALL_ON, MODULE_IDS } from './shared/state'
 
 const langAtom = atom({ plugin: 'takgon-mods', key: 'lang' } as const, 'ko')
@@ -13,6 +13,27 @@ const modulesAtom = atom({ plugin: 'takgon-mods', key: 'modules' } as const, ALL
 const projectIdAtom = atom({ plugin: 'takgon-mods', key: 'projectId' } as const, '')
 const notifiedAtom = atom({ plugin: 'takgon-mods', key: 'notified' } as const, [])
 const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
+
+/**
+ * 명령을 등록한다. 같은 이름의 사용자·내장 명령 때문에 거부되면 예외를 삼켜 다른 초기화(이 모듈과 뒤쪽 모듈)를 막지 않고,
+ * 명령마다 세션당 1회 toast로 알린다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
+ */
+const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<void> => {
+  try {
+    await $.command.register(spec)
+  } catch (error) {
+    try {
+      const marked = markNotified(await read($, notifiedAtom), registerCause(spec.name))
+      if (marked !== null) {
+        await update($, notifiedAtom, () => marked)
+        const vars = { name: spec.name, reason: refusalReason(error) }
+        $.ui.toast(t(await read($, langAtom), 'mods.registerRefused', vars))
+      }
+    } catch {
+      // 알림 실패도 초기화를 막지 않는다.
+    }
+  }
+}
 
 /** store 기준 현재 설정. 세션 상태가 아직 없을 수 있는 명령 처리에서도 쓴다. */
 const settings = async ($: EngineInterface): Promise<{ flags: ModuleFlags; lang: Lang }> => ({
@@ -51,11 +72,11 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 const start = async ($: EngineInterface): Promise<void> => {
   await restore($)
   const { lang } = await settings($)
-  await $.command.register({
+  await registerCommand($, {
     name: 'mods',
     description: t(lang, 'mods.description'),
     argumentHint: '[<module> on|off | lang ko|en]',
-  }).catch(() => undefined)
+  })
 }
 
 /**

@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, On } from 'claude-code'
+import type { CommandSpec, EngineInterface, On } from 'claude-code'
 
 import type { AgentRun, Lang, PanelTab, Pin, TaskItem, UsageSnapshot } from '../../types'
-import { toLang } from '../shared/i18n'
+import { t, toLang } from '../shared/i18n'
 import { globalKey, projectId, projectKey } from '../shared/keys'
-import { markNotified, toPercent } from '../shared/settings'
+import { markNotified, refusalReason, registerCause, toPercent } from '../shared/settings'
 import { ALL_ON } from '../shared/state'
 import {
   PANE_ID,
@@ -41,6 +41,27 @@ const usageAtom = atom({ plugin: 'takgon-mods', key: 'usage' } as const, null)
 const usageThresholdAtom = atom({ plugin: 'takgon-mods', key: 'usageThreshold' } as const, USAGE_THRESHOLD)
 const handoffAtom = atom({ plugin: 'takgon-mods', key: 'handoff' } as const, null)
 const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
+
+/**
+ * 명령을 등록한다. 같은 이름의 사용자·내장 명령 때문에 거부되면 예외를 삼켜 다른 초기화(이 모듈과 뒤쪽 모듈)를 막지 않고,
+ * 명령마다 세션당 1회 toast로 알린다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
+ */
+const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<void> => {
+  try {
+    await $.command.register(spec)
+  } catch (error) {
+    try {
+      const marked = markNotified(await read($, notifiedAtom), registerCause(spec.name))
+      if (marked !== null) {
+        await update($, notifiedAtom, () => marked)
+        const vars = { name: spec.name, reason: refusalReason(error) }
+        $.ui.toast(t(await read($, langAtom), 'mods.registerRefused', vars))
+      }
+    } catch {
+      // 알림 실패도 초기화를 막지 않는다.
+    }
+  }
+}
 
 const isOn = async ($: EngineInterface): Promise<boolean> => (await read($, modulesAtom)).panel
 
@@ -90,8 +111,8 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 /** 세션 시작: 명령 등록과 복원. */
 const init = async ($: EngineInterface): Promise<void> => {
   const lang = await langOf($)
-  await $.command.register({ name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close | pinboard | tasks | agents | usage | handoff | threshold <1-99>]' }).catch(() => undefined)
-  await $.command.register({ name: 'pin', description: tr(lang, 'pin.description'), argumentHint: '[<text>|list]' }).catch(() => undefined)
+  await registerCommand($, { name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close | pinboard | tasks | agents | usage | handoff | threshold <1-99>]' })
+  await registerCommand($, { name: 'pin', description: tr(lang, 'pin.description'), argumentHint: '[<text>|list]' })
   await ensureRestored($)
 }
 

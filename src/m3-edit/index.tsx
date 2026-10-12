@@ -1,8 +1,9 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, On } from 'claude-code'
+import type { CommandSpec, EngineInterface, On } from 'claude-code'
 
 import type { EditTarget, Lang } from '../../types'
-import { markNotified, OUTPUT_GITIGNORE, outputDir } from '../shared/settings'
+import { OUTPUT_GITIGNORE, markNotified, outputDir, refusalReason, registerCause } from '../shared/settings'
+import { t } from '../shared/i18n'
 import { ALL_ON } from '../shared/state'
 import {
   describeForModel,
@@ -24,19 +25,40 @@ const notifiedAtom = atom({ plugin: 'takgon-mods', key: 'notified' } as const, [
 const browserAtom = atom({ plugin: 'takgon-mods', key: 'browser' } as const, null)
 const editTargetAtom = atom({ plugin: 'takgon-mods', key: 'editTarget' } as const, null)
 
+/**
+ * 명령을 등록한다. 같은 이름의 사용자·내장 명령 때문에 거부되면 예외를 삼켜 다른 초기화(이 모듈과 뒤쪽 모듈)를 막지 않고,
+ * 명령마다 세션당 1회 toast로 알린다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
+ */
+const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<void> => {
+  try {
+    await $.command.register(spec)
+  } catch (error) {
+    try {
+      const marked = markNotified(await read($, notifiedAtom), registerCause(spec.name))
+      if (marked !== null) {
+        await update($, notifiedAtom, () => marked)
+        const vars = { name: spec.name, reason: refusalReason(error) }
+        $.ui.toast(t(await read($, langAtom), 'mods.registerRefused', vars))
+      }
+    } catch {
+      // 알림 실패도 초기화를 막지 않는다.
+    }
+  }
+}
+
 /** headless 스크립트 실행 제한 시간. */
 const HEADLESS_TIMEOUT_MS = 90_000
 
 const isOn = async ($: EngineInterface): Promise<boolean> => (await read($, modulesAtom)).edit
 
 /** `/edit` 등록. 세션 시작과 /clear·/resume 복원에서 부른다. */
-const registerCommand = async ($: EngineInterface): Promise<void> => {
+const registerEditCommand = async ($: EngineInterface): Promise<void> => {
   const lang = await read($, langAtom)
-  await $.command.register({
+  await registerCommand($, {
     name: 'edit',
     description: tr(lang, 'edit.description'),
     argumentHint: '<path>:<start>-<end> | sel | dom <selector> [url] | clear',
-  }).catch(() => undefined)
+  })
 }
 
 /** 같은 원인의 toast는 세션당 1회만. */
@@ -241,7 +263,7 @@ const guardFailedText = async ($: EngineInterface): Promise<string> => {
  */
 export const registerEdit = (on: On): void => {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    await registerCommand($)
+    await registerEditCommand($)
     return next(e)
   })
 

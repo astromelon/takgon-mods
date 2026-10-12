@@ -80,3 +80,20 @@ export const parsePercent = (text: string): number | null => {
   const value = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN
   return isPercent(value) ? value : null
 }
+
+/** 명령 등록 거부를 toast로 한 번만 알리기 위한 원인 키. */
+export const registerCause = (name: string): string => `register:${name}`
+
+/** 거부 사유 문구 최대 길이. toast 한 줄에 들어가게 자른다. */
+const REASON_MAX = 120
+
+/**
+ * `$.command.register` 거부 오류에서 사유만 꺼낸다(`... "/handoff" refused: it is the user's /handoff` → 뒤쪽).
+ * 형식이 다르면 메시지 전체를 쓰고, 길면 자른다.
+ */
+export const refusalReason = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  const after = /refused:\s*(.+)$/s.exec(message)?.[1] ?? message
+  const reason = after.trim()
+  return reason.length > REASON_MAX ? `${reason.slice(0, REASON_MAX - 1)}…` : reason
+}

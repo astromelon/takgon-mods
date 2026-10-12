@@ -19,6 +19,8 @@
 - **명령 등록 거부가 다른 모듈 초기화를 막던 문제**: M7의 `/handoff` 등록이 사용자 스킬과 겹쳐 거부되면, M7 `session.start` 훅이
   실패해 `.catch`가 답하면서 같은 플러그인의 뒤쪽 초기화(M2 `/browse`, M3 `/edit`, M5 `/issue` 등록)까지 건너뛰어졌다(엔진 제약 3번).
   모든 `$.command.register`를 실패해도 넘어가게 하고, 회귀 테스트(`tests/integration.test.tsx`)를 추가했다.
+  거부된 명령은 이름과 엔진이 준 사유를 담아 명령마다 세션당 1회 toast로 알린다
+  (예: `/browse 명령을 등록하지 못했습니다(it is the user's /browse)`).
 - **M2**: playwright 미설치 안내가 전역 설치(`npm i -g`)를 권했지만 headless 스크립트는 전역 모듈을 찾지 못한다. 플러그인 폴더 설치로 안내.
 - `plugin.json`·`marketplace.json`에 author·description을 채워 validate 경고 제거. (`0cc5c6f`)
 
