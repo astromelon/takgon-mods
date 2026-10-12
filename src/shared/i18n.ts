@@ -50,15 +50,25 @@ export const LANGS: readonly Lang[] = ['ko', 'en']
 /** 기본 언어. */
 export const DEFAULT_LANG: Lang = 'ko'
 
-/** `key`의 `lang` 문자열에 `{name}` 자리표시자를 채워 돌려준다. */
-export const t = (
-  lang: Lang,
-  key: MessageKey,
-  vars: Readonly<Record<string, string | number>> = {},
-): string =>
-  dictionaries[lang][key].replace(/\{(\w+)\}/g, (whole, name: string) =>
-    name in vars ? String(vars[name]) : whole,
-  )
+/** 자리표시자 값. */
+export type MessageVars = Readonly<Record<string, string | number>>
+
+/** `{name}` 자리표시자를 채운다. */
+export const format = (template: string, vars: MessageVars = {}): string =>
+  template.replace(/\{(\w+)\}/g, (whole, name: string) => (name in vars ? String(vars[name]) : whole))
+
+/** 코어 사전의 `key`를 `lang`으로 번역한다. */
+export const t = (lang: Lang, key: MessageKey, vars: MessageVars = {}): string =>
+  format(dictionaries[lang][key], vars)
+
+/**
+ * 모듈 전용 사전으로 번역기를 만든다. 각 모듈은 `src/m<N>-<name>/messages.ts`에 ko(키의 단일 출처)와 en을 두고
+ * `export const tr = createTranslator(ko, en)`으로 쓴다. 사전을 모듈별로 나눠 병렬 작업 시 충돌을 피한다.
+ */
+export const createTranslator =
+  <K extends string>(ko: Readonly<Record<K, string>>, en: Readonly<Record<K, string>>) =>
+  (lang: Lang, key: K, vars: MessageVars = {}): string =>
+    format((lang === 'en' ? en : ko)[key], vars)
 
 /** 저장된 값이 지원 언어면 그대로, 아니면 기본 언어. */
 export const toLang = (value: unknown): Lang =>
