@@ -6,8 +6,9 @@
 ## [Unreleased]
 
 ### Added
-- `README.md`: 모듈·명령 표, 설치(private 저장소 `astromelon/takgon-mods`), 선택 의존성 준비 방법.
+- `README.md`: 모듈·명령 표, `/mods` 등록 상태 표시와 `/panel`·`/tk-handoff` 임계치 사용법, 설치(private 저장소 `astromelon/takgon-mods`), 선택 의존성 준비 방법.
 - **core**: `/mods` 목록의 모듈 줄마다 명령 등록 결과 표시(`/panel ✓`, `/browse ✗ (사유)`, 결과 없으면 `?`). 결과는 프로젝트 store `p/{pid}/core/commands`에도 남겨 `/clear` 뒤에도 보인다.
+- `docs/issues/06-model-fork-no-timeout.md`, `docs/issues/07-testing-kit-engine-answer-conventions.md`: 엔진 제약 6·7번 claude-code 이슈 초안.
 - `docs/issues/03-catch-skips-same-plugin-hooks.md`: 엔진 제약 3번(`.catch` 뒤 같은 플러그인 훅 건너뜀) claude-code 이슈 초안.
 - `docs/issues/09-command-register-skill-conflict.md`: 엔진 제약 9번(스킬 이름 충돌로 초기화 연쇄 실패) claude-code 이슈 초안.
 - `docs/engine-constraints.md` 7번: 테스트 킷에서 엔진 거부는 `{ deny }`로 답해야 한다는 규약. (`c2c6c99`)
