@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Changed
+- `tools/e2e` 화면 판정을 가상 터미널(pyte) 재구성 방식으로 변경. TUI 차분 렌더 때문에 원시 출력에서 빠지던 줄(예: `/issue` 검색 결과 제목·첫 행)도 판정된다. `linear_issue` 판정을 원래의 엄격한 형태로 되돌림.
+
 ### Added
 - `tools/e2e` 시나리오 `linear_issue`: 실제 Linear API로 `/issue` 검색·연결·중복 연결·해제 확인. 하네스가 새 셸을 열지 않아도 사용자 환경변수를 레지스트리에서 읽어 하위 세션에 넘긴다(`user_env`).
 

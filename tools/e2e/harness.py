@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
+import pyte
 import winpty
 
 E2E_DIR = Path(__file__).resolve().parent
@@ -32,6 +33,9 @@ PROBES = E2E_DIR / "probes"
 WORK_ROOT = Path(os.environ.get("TAKGON_E2E_WORK", Path(tempfile.gettempdir()) / "takgon-e2e"))
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\x1b[()][0-9A-Za-z]|\x1b[=>78]")
+
+# pyte가 해석하지 못하는 비표준 CSI(kitty 키보드 프로토콜 `ESC[<u`, `ESC[>4m`, `ESC[>0q` 등). 그대로 넣으면 글자가 화면에 샌다.
+PRIVATE_CSI = re.compile(r"\x1b\[[<>=][0-9;]*[ -/]*[@-~]")
 
 
 def find_claude() -> str:
@@ -135,6 +139,11 @@ class Session:
         merged = {**os.environ, **(env or {})} if env else None
         self.proc = winpty.PtyProcess.spawn(argv, cwd=str(cwd), env=merged, dimensions=(rows, columns))
         self.raw: list[str] = []
+        # 출력을 가상 터미널에 넣어 화면을 재구성한다. TUI는 이미 같은 글자가 있던 칸을 다시 보내지 않으므로
+        # 원시 출력만 보면 줄이 빠진다. 바뀐 줄(dirty)은 재구성된 줄 전체를 `lines`에 기록하고 판정은 이 기록으로 한다.
+        self.vt = pyte.Screen(columns, rows)
+        self.vt_stream = pyte.Stream(self.vt)
+        self.lines: list[str] = []
         self.lock = threading.Lock()
         threading.Thread(target=self._read, daemon=True).start()
 
@@ -146,14 +155,27 @@ class Session:
                 break
             with self.lock:
                 self.raw.append(chunk)
+                self.vt_stream.feed(PRIVATE_CSI.sub("", chunk))
+                display = self.vt.display
+                for y in sorted(self.vt.dirty):
+                    if 0 <= y < len(display):
+                        self.lines.append(display[y].rstrip())
+                self.vt.dirty.clear()
 
     def mark(self) -> int:
+        """지금까지 기록된 화면 줄 수. 이후 `text(since)`·`wait_for(..., since)`는 이 뒤에 그려진 줄만 본다."""
         with self.lock:
-            return len(self.raw)
+            return len(self.lines)
 
     def text(self, since: int = 0) -> str:
+        """`since` 이후 화면에 그려진(바뀐) 줄. 스크롤로 다시 그려진 줄도 포함되므로 '없음' 판정은 화면을 비운 뒤에 한다."""
         with self.lock:
-            return ANSI.sub("", "".join(self.raw[since:]))
+            return "\n".join(self.lines[since:])
+
+    def display(self) -> str:
+        """지금 화면에 보이는 그대로."""
+        with self.lock:
+            return "\n".join(row.rstrip() for row in self.vt.display)
 
     def screen(self, since: int = 0) -> str:
         return squash(self.text(since))
@@ -237,6 +259,9 @@ class Session:
         if self.proc.isalive():
             self.proc.terminate(force=True)
         self.log_path.write_text(self.text(), encoding="utf-8")
+        with self.lock:
+            raw = ANSI.sub("", "".join(self.raw))
+        self.log_path.with_suffix(".raw.log").write_text(raw, encoding="utf-8")
 
     def debug_lines(self, *needles: str) -> list[str]:
         """debug 로그에서 모든 needle을 포함한 줄."""
