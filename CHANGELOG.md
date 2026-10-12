@@ -6,7 +6,8 @@
 ## [Unreleased]
 
 ### Added
-- GitHub Actions CI(`.github/workflows/ci.yml`): push·PR마다 Windows·Ubuntu에서 `claude plugin validate`·`claude plugin test` 실행(Claude Code 2.1.296 고정).
+- GitHub Actions CI(`.github/workflows/ci.yml`): push·PR마다 Windows에서 `claude plugin validate`·`claude plugin test` 실행(Claude Code 2.1.296 고정).
+  테스트가 Windows 절대 경로(`C:/proj`)를 가정해 Linux에서는 실패하므로 Windows만 돌린다.
 - `README.md`: 모듈·명령 표, `/mods` 등록 상태 표시와 `/panel`·`/tk-handoff` 임계치 사용법, 설치(private 저장소 `astromelon/takgon-mods`), 선택 의존성 준비 방법.
 - **core**: `/mods` 목록의 모듈 줄마다 명령 등록 결과 표시(`/panel ✓`, `/browse ✗ (사유)`, 결과 없으면 `?`). 결과는 프로젝트 store `p/{pid}/core/commands`에도 남겨 `/clear` 뒤에도 보인다.
 - `docs/issues/06-model-fork-no-timeout.md`, `docs/issues/07-testing-kit-engine-answer-conventions.md`: 엔진 제약 6·7번 claude-code 이슈 초안.
