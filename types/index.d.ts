@@ -12,6 +12,9 @@ export type ModuleId =
   | 'edit'
   | 'diagram'
 
+/** 명령 등록 결과. 거부되면 엔진이 준 사유를 남긴다. */
+export type CommandRegistration = { isListed: boolean; reason?: string }
+
 /** 모듈별 on/off. 저장된 값이 없는 모듈은 on으로 본다. */
 export type ModuleFlags = Record<ModuleId, boolean>
 
@@ -116,6 +119,8 @@ declare module 'claude-code' {
        * 다음 프롬프트·명령에서 각 모듈이 다시 복원한다.
        */
       restored: string[]
+      /** 명령 이름별 마지막 등록 결과(`p/{pid}/core/commands` 미러). `/mods` 목록이 그린다. */
+      commands: Record<string, CommandRegistration>
 
       // M5 integrations
       pr: PrStatus | null

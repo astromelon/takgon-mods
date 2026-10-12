@@ -4,9 +4,9 @@
  * 엔진은 `$`를 import 경계 너머로 전달하는 것을 거부한다(같은 파일 안 함수로만 추적). 그래서 shared에는
  * `$`를 받는 함수를 두지 않고, store 읽기·쓰기는 각 모듈 파일이 아래 키와 변환 함수로 직접 한다.
  */
-import type { Lang, ModuleFlags, ModuleId } from '../../types'
+import type { CommandRegistration, Lang, ModuleFlags, ModuleId } from '../../types'
 import { LANGS } from './i18n'
-import { globalKey } from './keys'
+import { globalKey, projectKey } from './keys'
 import { ALL_ON, MODULE_IDS } from './state'
 
 /** 모듈 on/off store 키. */
@@ -97,3 +97,49 @@ export const refusalReason = (error: unknown): string => {
   const reason = after.trim()
   return reason.length > REASON_MAX ? `${reason.slice(0, REASON_MAX - 1)}…` : reason
 }
+
+/** 모듈이 등록하는 명령 이름. `/mods` 목록에서 모듈 줄 옆에 등록 결과를 보여 줄 때 쓴다. */
+export const MODULE_COMMANDS: Readonly<Partial<Record<ModuleId, readonly string[]>>> = {
+  integrations: ['issue'],
+  composer: ['coach'],
+  panel: ['panel', 'pin'],
+  handoff: ['tk-handoff'],
+  browser: ['browse'],
+  edit: ['edit'],
+}
+
+/** 명령 등록 결과 store 키. 프로젝트 스킬에 따라 결과가 달라지므로 프로젝트 범위다. */
+export const commandsKey = (pid: string): string => projectKey(pid, 'core', 'commands')
+
+/** 저장된 등록 결과를 맞춘다. 형식이 틀린 항목은 버린다. */
+export const toCommandMap = (value: unknown): Record<string, CommandRegistration> => {
+  const map: Record<string, CommandRegistration> = {}
+  if (value === null || typeof value !== 'object') {
+    return map
+  }
+  for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
+    const one = (entry ?? {}) as Partial<Record<string, unknown>>
+    if (typeof one.isListed === 'boolean') {
+      map[name] = typeof one.reason === 'string' ? { isListed: one.isListed, reason: one.reason } : { isListed: one.isListed }
+    }
+  }
+  return map
+}
+
+/** `/panel ✓ /pin ✓`, `/browse ✗ (사유)`, 결과가 없으면 `/edit ?`. */
+export const formatCommandStatus = (
+  names: readonly string[],
+  map: Readonly<Record<string, CommandRegistration>>,
+): string =>
+  names
+    .map(name => {
+      const result = map[name]
+      if (result === undefined) {
+        return `/${name} ?`
+      }
+      if (result.isListed) {
+        return `/${name} ✓`
+      }
+      return result.reason ? `/${name} ✗ (${result.reason})` : `/${name} ✗`
+    })
+    .join(' ')

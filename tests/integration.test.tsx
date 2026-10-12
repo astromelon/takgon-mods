@@ -1,5 +1,8 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
+
+import { projectId } from '../src/shared/keys'
 
 const START = { cwd: 'C:/proj', surface: 'terminal', isInteractive: true } as const
 
@@ -35,6 +38,49 @@ const engine = (
   })
   return { attempts, listed, toasts }
 }
+
+const mods = ($: Engine, args = '') =>
+  $.command.run({
+    command: 'mods',
+    args,
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 120 },
+  })
+
+describe('/mods 명령 등록 상태', () => {
+  test('모듈 줄마다 명령 등록 성공(✓)·거부(✗와 사유)를 함께 보여준다', async ($, on) => {
+    engine(on, ['browse'])
+    const clock = mock.clock(on)
+    mock.store(on)
+    mock.env(on, {})
+    await $.session.start(START)
+    await clock.settle()
+
+    const text = (await mods($)).text ?? ''
+
+    expect(text).toMatch(/- panel .*\/panel ✓ \/pin ✓/)
+    expect(text).toMatch(/- browser .*\/browse ✗ \(it is the user's \/browse\)/)
+    expect(text).toMatch(/- handoff .*\/tk-handoff ✓/)
+    // 명령이 없는 모듈(i18n)은 명령 표시가 붙지 않는다.
+    expect(text).not.toMatch(/- i18n .*✓/)
+  })
+
+  test('/clear 뒤처럼 state가 비어 있으면 프로젝트 store의 마지막 등록 결과로 보여준다', async ($, on) => {
+    engine(on, [])
+    mock.store(on, {
+      [`p/${projectId('C:/proj')}/core/commands`]: {
+        edit: { isListed: false, reason: "it is the user's /edit" },
+        issue: { isListed: true },
+      },
+    })
+
+    const text = (await mods($)).text ?? ''
+
+    expect(text).toMatch(/- edit .*\/edit ✗ \(it is the user's \/edit\)/)
+    expect(text).toMatch(/- integrations .*\/issue ✓/)
+    expect(text).toMatch(/- panel .*\/panel \?/)
+  })
+})
 
 describe('모듈 초기화 격리', () => {
   test('한 모듈의 명령 이름이 사용자 명령과 겹쳐 거부돼도 나머지 모듈 명령은 모두 등록된다', async ($, on) => {

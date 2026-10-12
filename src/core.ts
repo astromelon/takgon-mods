@@ -1,37 +1,48 @@
 import { atom, read, update } from 'claude-code'
 import type { CommandSpec, EngineInterface, On } from 'claude-code'
 
-import type { Lang, ModuleFlags } from '../types'
+import type { CommandRegistration, Lang, ModuleFlags } from '../types'
 import { t, toLang } from './shared/i18n'
 import type { MessageKey } from './shared/i18n'
 import { projectId } from './shared/keys'
-import { LANG_KEY, MODULES_KEY, markNotified, parseModsArgs, refusalReason, registerCause, toFlags } from './shared/settings'
+import { LANG_KEY, MODULES_KEY, MODULE_COMMANDS, commandsKey, formatCommandStatus, markNotified, parseModsArgs, refusalReason, registerCause, toCommandMap, toFlags } from './shared/settings'
 import { ALL_ON, MODULE_IDS } from './shared/state'
 
 const langAtom = atom({ plugin: 'takgon-mods', key: 'lang' } as const, 'ko')
 const modulesAtom = atom({ plugin: 'takgon-mods', key: 'modules' } as const, ALL_ON)
 const projectIdAtom = atom({ plugin: 'takgon-mods', key: 'projectId' } as const, '')
 const notifiedAtom = atom({ plugin: 'takgon-mods', key: 'notified' } as const, [])
+const commandsAtom = atom({ plugin: 'takgon-mods', key: 'commands' } as const, {})
 const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
 
 /**
  * 명령을 등록한다. 같은 이름의 사용자·내장 명령 때문에 거부되면 예외를 삼켜 다른 초기화(이 모듈과 뒤쪽 모듈)를 막지 않고,
- * 명령마다 세션당 1회 toast로 알린다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
+ * 명령마다 세션당 1회 toast로 알린다. 결과는 `/mods` 목록용으로 기록한다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
  */
 const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<void> => {
+  let result: CommandRegistration = { isListed: true }
   try {
     await $.command.register(spec)
   } catch (error) {
+    result = { isListed: false, reason: refusalReason(error) }
     try {
       const marked = markNotified(await read($, notifiedAtom), registerCause(spec.name))
       if (marked !== null) {
         await update($, notifiedAtom, () => marked)
-        const vars = { name: spec.name, reason: refusalReason(error) }
+        const vars = { name: spec.name, reason: result.reason ?? '' }
         $.ui.toast(t(await read($, langAtom), 'mods.registerRefused', vars))
       }
     } catch {
       // 알림 실패도 초기화를 막지 않는다.
     }
+  }
+  // `/mods` 목록이 보여 줄 수 있게 결과를 state와 프로젝트 store(`/clear` 뒤 복원용)에 남긴다.
+  try {
+    await update($, commandsAtom, map => ({ ...map, [spec.name]: result }))
+    const key = commandsKey(projectId(await $.session.root()))
+    await $.store.set(key, { ...toCommandMap(await $.store.get(key)), [spec.name]: result })
+  } catch {
+    // 기록 실패도 초기화를 막지 않는다.
   }
 }
 
@@ -50,6 +61,9 @@ const restore = async ($: EngineInterface): Promise<void> => {
   await update($, notifiedAtom, () => [])
   await update($, modulesAtom, () => flags)
   await update($, langAtom, () => lang)
+  // 마지막 명령 등록 결과. 이번 세션의 등록이 곧 덮어쓰고, /clear 뒤에는 이 값이 `/mods`에 보인다.
+  const commands = toCommandMap(await $.store.get(commandsKey(projectId(root))))
+  await update($, commandsAtom, () => commands)
 }
 
 /**
@@ -121,14 +135,21 @@ export const registerCore = (on: On): void => {
     if (action.kind === 'usage') {
       return { text: t(lang, 'mods.usage', { modules: MODULE_IDS.join(', ') }) }
     }
-    return { text: listText(flags, lang) }
+    return { text: listText(flags, lang, await read($, commandsAtom)) }
   })
 }
 
-const listText = (flags: ModuleFlags, lang: Lang): string => {
+const listText = (
+  flags: ModuleFlags,
+  lang: Lang,
+  commands: Readonly<Record<string, CommandRegistration>>,
+): string => {
   const rows = MODULE_IDS.map(id => {
     const state = t(lang, flags[id] ? 'mods.state.on' : 'mods.state.off')
-    return `- ${id} (${t(lang, `module.${id}` as MessageKey)}): ${state}`
+    const names = MODULE_COMMANDS[id] ?? []
+    const status = names.length > 0 ? ` · ${formatCommandStatus(names, commands)}` : ''
+    return `- ${id} (${t(lang, `module.${id}` as MessageKey)}): ${state}${status}`
   })
-  return [t(lang, 'mods.title'), ...rows, t(lang, 'mods.lang', { lang })].join('\n')
+  const lines = [t(lang, 'mods.title'), ...rows, t(lang, 'mods.commandsLegend'), t(lang, 'mods.lang', { lang })]
+  return lines.join('\n')
 }
