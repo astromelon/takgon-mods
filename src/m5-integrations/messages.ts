@@ -29,6 +29,8 @@ const ko = {
   'issue.failed': 'Linear 요청에 실패했습니다({cause}).',
   'toast.ghMissing': 'gh CLI를 실행할 수 없어 PR 배지를 숨깁니다. gh를 설치하세요.',
   'toast.ghAuth': 'gh 인증이 필요해 PR 배지를 숨깁니다. gh auth login 을 실행하세요.',
+  'toast.glabMissing': 'glab CLI를 실행할 수 없어 MR 배지를 숨깁니다. glab을 설치하세요.',
+  'toast.glabAuth': 'glab 인증이 필요해 MR 배지를 숨깁니다. glab auth login --hostname <호스트> 를 실행하세요.',
   'toast.linearAuth': 'Linear 인증에 실패했습니다. LINEAR_API_KEY를 확인하세요.',
   'toast.linearHttp': 'Linear 요청에 실패했습니다. 잠시 후 다시 시도하세요.',
 } as const
@@ -63,6 +65,8 @@ const en: Record<M5Key, string> = {
   'issue.failed': 'The Linear request failed ({cause}).',
   'toast.ghMissing': 'Cannot run the gh CLI; hiding the PR badge. Install gh.',
   'toast.ghAuth': 'gh needs authentication; hiding the PR badge. Run gh auth login.',
+  'toast.glabMissing': 'Cannot run the glab CLI; hiding the MR badge. Install glab.',
+  'toast.glabAuth': 'glab needs authentication; hiding the MR badge. Run glab auth login --hostname <host>.',
   'toast.linearAuth': 'Linear authentication failed. Check LINEAR_API_KEY.',
   'toast.linearHttp': 'The Linear request failed. Try again later.',
 }

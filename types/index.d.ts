@@ -17,14 +17,16 @@ export type ModuleFlags = Record<ModuleId, boolean>
 
 // ── M5 integrations ────────────────────────────────────────────────
 
-/** 현재 브랜치 PR 요약(gh pr view). */
+/** 현재 브랜치 PR(GitHub, gh pr view) 또는 MR(GitLab, glab mr view) 요약. */
 export type PrStatus = {
   number: number
   url: string
   /** `APPROVED` | `CHANGES_REQUESTED` | `REVIEW_REQUIRED` | '' */
   reviewDecision: string
-  /** 체크 집계. */
+  /** 체크 집계(GitLab은 파이프라인 상태). */
   checks: 'success' | 'failure' | 'pending' | 'none'
+  /** 어느 forge의 것인지. 없으면 github(GitHub PR). gitlab이면 배지를 `MR !n`으로 그린다. */
+  provider?: 'github' | 'gitlab'
 }
 
 /** Linear 이슈 한 건. */

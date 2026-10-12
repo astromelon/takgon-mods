@@ -17,6 +17,16 @@ import {
 import { GH_PR_VIEW, GH_TIMEOUT_MS, classifyGhExit, parsePrView, shouldRefresh } from './github'
 import type { GhFailure } from './github'
 import {
+  GIT_REMOTE_URL,
+  GLAB_MR_VIEW,
+  approvalDecision,
+  classifyGlabExit,
+  detectForge,
+  glabApprovals,
+  parseMrView,
+} from './gitlab'
+import type { Forge, GlabFailure } from './gitlab'
+import {
   LINEAR_URL,
   LINK_LIMIT,
   findState,
@@ -54,6 +64,8 @@ let lastRefreshAt: number | null = null
 const TOAST_OF: Readonly<Record<string, M5Key>> = {
   'gh-missing': 'toast.ghMissing',
   'gh-auth': 'toast.ghAuth',
+  'glab-missing': 'toast.glabMissing',
+  'glab-auth': 'toast.glabAuth',
   'linear-auth': 'toast.linearAuth',
   'linear-http': 'toast.linearHttp',
 }
@@ -79,24 +91,73 @@ const notifyOnce = async ($: EngineInterface, cause: string): Promise<void> => {
   $.ui.toast(tr(await read($, langAtom), key))
 }
 
-/** getStatus에 해당: `gh pr view`로 PR 상태(`pr` atom)를 갱신한다. PR 없음은 조용히 null, 그 밖의 실패는 원인별 toast 1회. */
+/** 원격 주소로 forge를 고른다. 원격이 없거나 git을 못 돌리면 null(배지를 조용히 숨긴다). */
+const forgeOf = async ($: EngineInterface): Promise<Forge | null> => {
+  try {
+    const run = await $.process.run(GIT_REMOTE_URL, { timeoutMs: GH_TIMEOUT_MS })
+    return run.exitCode === 0 ? detectForge(run.stdout) : null
+  } catch {
+    return null
+  }
+}
+
+/** `gh pr view`로 현재 브랜치 PR을 읽는다. */
+const githubStatus = async (
+  $: EngineInterface,
+): Promise<{ pr: PrStatus | null; failure: GhFailure | null }> => {
+  try {
+    const run = await $.process.run(GH_PR_VIEW, { timeoutMs: GH_TIMEOUT_MS })
+    return run.exitCode === 0
+      ? { pr: parsePrView(run.stdout), failure: null }
+      : { pr: null, failure: classifyGhExit(run.exitCode, run.stderr) }
+  } catch {
+    return { pr: null, failure: 'gh-missing' }
+  }
+}
+
+/** `glab mr view`로 현재 브랜치 MR을, 승인 API로 리뷰 상태를 읽는다. 승인 조회 실패는 MR 정보만 쓴다. */
+const gitlabStatus = async (
+  $: EngineInterface,
+): Promise<{ pr: PrStatus | null; failure: GlabFailure | null }> => {
+  let mr: PrStatus | null
+  try {
+    const run = await $.process.run(GLAB_MR_VIEW, { timeoutMs: GH_TIMEOUT_MS })
+    if (run.exitCode !== 0) {
+      return { pr: null, failure: classifyGlabExit(run.exitCode, run.stderr) }
+    }
+    mr = parseMrView(run.stdout)
+  } catch {
+    return { pr: null, failure: 'glab-missing' }
+  }
+  if (mr === null) {
+    return { pr: null, failure: null }
+  }
+  try {
+    const run = await $.process.run(glabApprovals(mr.number), { timeoutMs: GH_TIMEOUT_MS })
+    if (run.exitCode === 0) {
+      mr = { ...mr, reviewDecision: approvalDecision(mr.reviewDecision, run.stdout) }
+    }
+  } catch {
+    // 승인 정보는 부가 정보라 MR 배지는 그대로 보인다.
+  }
+  return { pr: mr, failure: null }
+}
+
+/**
+ * getStatus에 해당: 원격이 GitHub면 `gh`, 그 밖(GitLab·사내 셀프호스팅)이면 `glab`으로 현재 브랜치 PR/MR을 읽어
+ * `pr` atom을 갱신한다. PR/MR 없음은 조용히 null, 그 밖의 실패는 원인별 toast 1회.
+ */
 const getStatus = async ($: EngineInterface): Promise<void> => {
   if (!(await read($, modulesAtom)).integrations) {
     return
   }
   lastRefreshAt = await $.clock.now()
-  let failure: GhFailure | null = null
-  let pr: PrStatus | null = null
-  try {
-    const run = await $.process.run(GH_PR_VIEW, { timeoutMs: GH_TIMEOUT_MS })
-    if (run.exitCode === 0) {
-      pr = parsePrView(run.stdout)
-    } else {
-      failure = classifyGhExit(run.exitCode, run.stderr)
-    }
-  } catch {
-    failure = 'gh-missing'
+  const forge = await forgeOf($)
+  if (forge === null) {
+    await update($, prAtom, () => null)
+    return
   }
+  const { pr, failure } = forge === 'github' ? await githubStatus($) : await gitlabStatus($)
   await update($, prAtom, () => pr)
   if (failure !== null && failure !== 'no-pr') {
     await notifyOnce($, failure)

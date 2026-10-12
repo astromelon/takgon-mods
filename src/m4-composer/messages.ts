@@ -3,6 +3,7 @@ import { createTranslator } from '../shared/i18n'
 /** M4 기본(ko) 사전. 키 목록의 단일 출처다. */
 const ko = {
   'pr.badge': 'PR #{number}',
+  'mr.badge': 'MR !{number}',
   'pr.review.APPROVED': '승인됨',
   'pr.review.CHANGES_REQUESTED': '변경 요청',
   'pr.review.REVIEW_REQUIRED': '리뷰 대기',
@@ -42,6 +43,7 @@ export type ComposerKey = keyof typeof ko
 
 const en: Record<ComposerKey, string> = {
   'pr.badge': 'PR #{number}',
+  'mr.badge': 'MR !{number}',
   'pr.review.APPROVED': 'approved',
   'pr.review.CHANGES_REQUESTED': 'changes requested',
   'pr.review.REVIEW_REQUIRED': 'review required',
