@@ -25,12 +25,12 @@ def run(r: Results) -> None:
     with StoreGuard(projects=[proj]):
         with Session(proj, "--model", "haiku", log_name="linear_issue", env=env) as s:
             s.ready()
-            # 터미널은 이미 같은 글자가 있던 칸을 다시 보내지 않아 제목 줄 등이 출력 기록에서 빠질 수 있다.
-            # 그래서 화면 판정은 새로 나타나는 결과 행으로, 연결 여부는 store에 저장된 값으로 확인한다.
             m = s.send(f"/issue {query}")
-            s.wait_re(r"-[A-Z][A-Z0-9]*-\d+\[", m, 30)
+            title = s.wait_re(rf'"{re.escape(query)}"검색결과(\d+)건', m, 30)
+            r.check(f"/issue {query} 검색 결과 제목 줄", title is not None, title.group(0) if title else "")
             rows = re.findall(r"-([A-Z][A-Z0-9]*-\d+)\[([^\]]+)\]", s.screen(m))
-            r.check(f"/issue {query} 검색 결과 행(식별자·상태)", bool(rows), rows[:4])
+            count = int(title.group(1)) if title else -1
+            r.check("결과 행 수가 제목의 건수와 같음", len(dict.fromkeys(i for i, _ in rows)) == count, rows)
             if not rows:
                 return
 
@@ -43,7 +43,7 @@ def run(r: Results) -> None:
             linked = store.get(f"p/{project_id(proj)}/m5/linkedIssues") or []
             r.check("store에 연결 이슈 저장(p/{pid}/m5/linkedIssues)", [i.get("identifier") for i in linked] == [ident], [i.get("identifier") for i in linked])
             m = s.send("/issue")
-            r.check("/issue 목록에 연결된 이슈", s.wait_for(ident, m, 30))
+            r.check("/issue 목록에 연결된 이슈 1건", s.wait_for("연결된 이슈 1건", m, 30) and s.wait_for(ident, m, 5))
 
             m = s.send(f"/issue unlink {ident}")
             r.check(f"/issue unlink {ident}", s.wait_for(f"{ident} 연결을 해제했습니다", m, 30))
