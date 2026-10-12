@@ -162,7 +162,16 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
   - `session.start`, `session.root`, `command.register` 등은 테스트 훅이 직접 답해야 한다. 답하지 않으면 플러그인 초기화 훅이 조용히 skip된다.
   - `$.command.run`은 `origin`·`presentation`까지 전체 입력을 받는다.
   - `$.ui.ask`는 `tool.call {tool:'AskUserQuestion'}`으로 mock한다.
+  - **엔진의 거부는 `{ deny: 사유 }`로 답해야 한다.** 엔진 자리 훅이 `throw`하면 그 훅이 "skip"된 것으로 처리된다.
+    그러면 호출한 플러그인에는 거부 사유 대신 `no implementation for <op>`가 전달된다(9번 회귀 테스트에서 확인).
+    ```ts
+    // 잘못: 플러그인은 "no implementation for command.register"를 받는다
+    on('command.register', ($, e) => { throw new Error(`"/${e.name}" refused: ...`) })
+    // 맞음: 플러그인의 $.command.register가 이 사유로 reject된다
+    on('command.register', ($, e) => ({ deny: `"/${e.name}" refused: it is the user's /${e.name}` }))
+    ```
 - **제안**: `claude-code/testing` 문서에 "엔진 자리 훅 작성법" 절과 기본 응답 helper(`mock.session()` 확장 등) 제공.
+  특히 실제 엔진의 거부를 흉내 내는 방법(`{ deny }`)과 `throw`의 차이를 명시.
 
 ## 8. (외부) mermaid-cli SVG가 `Svg` 표시 한도를 넘음
 
