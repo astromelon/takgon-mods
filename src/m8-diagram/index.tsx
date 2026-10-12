@@ -11,6 +11,7 @@ import {
   imageCells,
   isCommandMissing,
   keepRecent,
+  slimSvg,
   splitMermaid,
 } from './mermaid'
 import type { MermaidBlock } from './mermaid'
@@ -67,10 +68,10 @@ const ensureGitignore = async ($: EngineInterface, base: string): Promise<void> 
   }
 }
 
-/** svg 원문을 읽어 desktop 표시 한도 이하일 때만 돌려준다. */
+/** svg 원문을 읽어 내장 폰트를 뺀 뒤 desktop 표시 한도 이하일 때만 돌려준다. */
 const readSvg = async ($: EngineInterface, path: string): Promise<string | undefined> => {
   try {
-    const text = await $.fs.read(path)
+    const text = slimSvg(await $.fs.read(path))
     return text.length <= SVG_MAX_CHARS ? text : undefined
   } catch {
     return undefined

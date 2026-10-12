@@ -16,6 +16,18 @@ export type MermaidBlock = { code: string; hash: string }
 /** desktop `Svg`가 받는 최대 길이. 넘으면 원본 코드로 표시한다. */
 export const SVG_MAX_CHARS = 131_072
 
+/**
+ * desktop 표시용으로 SVG에서 내장 폰트 `<style>` 블록(`@font-face` + base64 woff2)을 뺀다.
+ *
+ * mermaid-cli 12는 Recursive 폰트 4종을 SVG에 통째로 넣어, 노드 3개짜리 다이어그램도 약 197,000자가 된다
+ * (그중 폰트가 167,000자). 테마 style은 `"Recursive Variable",arial,sans-serif`로 대체 글꼴을 지정하므로
+ * 폰트 블록만 빼도 모양이 유지된다. 저장 파일은 원본 그대로 두고 표시에만 쓴다.
+ */
+export const slimSvg = (svg: string): string =>
+  svg.replace(/<style[^>]*>((?:(?!<\/style>)[\s\S])*)<\/style>/g, (block, body: string) =>
+    body.includes('@font-face') ? '' : block,
+  )
+
 /** `diagrams` atom에 남기는 최대 개수. */
 export const MAX_DIAGRAMS = 50
 
