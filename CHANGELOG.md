@@ -8,11 +8,13 @@
 ### Changed
 - `tools/e2e` 화면 판정을 가상 터미널(pyte) 재구성 방식으로 변경. TUI 차분 렌더 때문에 원시 출력에서 빠지던 줄(예: `/issue` 검색 결과 제목·첫 행)도 판정된다. `linear_issue` 판정을 원래의 엄격한 형태로 되돌림.
 - `tools/e2e` 시나리오 `mods_status`: 거부 toast 판정을 사유 문구 전체(`it is the user's /browse`)로 엄격하게 변경.
+- `SPEC.md` 런타임 제약·저장소 규칙 절의 `classic.SessionStart` 복원 안내를 실측(엔진 제약 1·2번: user 플러그인의 `classic.*` 훅 bypass, `/clear` 뒤 각 모듈 첫 훅에서 `$.store` 지연 복원)에 맞게 수정.
 
 ### Added
 - GitHub Actions CI(`.github/workflows/ci.yml`): `tools/e2e` 하네스 단위 테스트 및 probe 시나리오 3개(`probe_classic`, `probe_catch`, `probe_clear_state`) 실행 단계 추가.
 - `tools/e2e/test_harness.py`: 하네스의 가상 터미널(pyte) 화면 재구성·dirty 줄 수집 및 비표준 CSI(kitty 등) 필터에 대한 단위 테스트 추가.
 - `tools/e2e` 시나리오 `linear_issue`: 실제 Linear API로 `/issue` 검색·연결·중복 연결·해제 확인. 하네스가 새 셸을 열지 않아도 사용자 환경변수를 레지스트리에서 읽어 하위 세션에 넘긴다(`user_env`).
+- `CLAUDE.md`: Claude Code용 작업 안내 추가 — 개발·검증 명령(validate·test·tsc·`tools/e2e`), `src/index.ts` 단일 진입점과 모듈 폴더 구조, 엔진 제약에서 나온 코딩 규칙, `$.store` 키 규칙(`p/{projectId}/…`·`g/…`), 테스트 규약.
 
 ## [0.4.0] - 2026-10-12
 
