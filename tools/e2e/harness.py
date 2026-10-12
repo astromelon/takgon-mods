@@ -53,6 +53,31 @@ def find_store() -> Path:
     return Path(max(matches, key=os.path.getmtime))
 
 
+def user_env(*names: str) -> dict[str, str]:
+    """현재 프로세스에 없으면 Windows 사용자 환경변수(레지스트리 HKCU의 Environment 키)에서 읽는다.
+
+    사용자가 setx 등으로 설정한 변수는 그 전에 시작된 프로세스(이 하네스를 띄운 셸 포함)에는 보이지 않는다.
+    값은 하위 세션에 넘기기만 하고 출력하지 않는다.
+    """
+    found: dict[str, str] = {}
+    try:
+        import winreg
+    except ImportError:
+        return found
+    for name in names:
+        if os.environ.get(name):
+            found[name] = os.environ[name]
+            continue
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                value, _ = winreg.QueryValueEx(key, name)
+        except OSError:
+            continue
+        if isinstance(value, str) and value:
+            found[name] = value
+    return found
+
+
 def project_id(root: str | Path) -> str:
     """플러그인 `src/shared/keys.ts`의 projectId와 같은 계산(FNV-1a, 경로 표기 정규화)."""
     text = str(root).replace("\\", "/").rstrip("/").lower()
@@ -94,12 +119,21 @@ class Results:
 class Session:
     """의사 터미널에서 도는 대화형 `claude` 세션."""
 
-    def __init__(self, cwd: Path, *args: str, log_name: str, columns: int = 180, rows: int = 60) -> None:
+    def __init__(
+        self,
+        cwd: Path,
+        *args: str,
+        log_name: str,
+        columns: int = 180,
+        rows: int = 60,
+        env: dict[str, str] | None = None,
+    ) -> None:
         LOG_DIR.mkdir(exist_ok=True)
         self.log_path = LOG_DIR / f"{log_name}-{time.strftime('%Y%m%d-%H%M%S')}.log"
         self.debug_path = self.log_path.with_suffix(".debug.log")
         argv = [find_claude(), *args, "--debug-file", str(self.debug_path)]
-        self.proc = winpty.PtyProcess.spawn(argv, cwd=str(cwd), dimensions=(rows, columns))
+        merged = {**os.environ, **(env or {})} if env else None
+        self.proc = winpty.PtyProcess.spawn(argv, cwd=str(cwd), env=merged, dimensions=(rows, columns))
         self.raw: list[str] = []
         self.lock = threading.Lock()
         threading.Thread(target=self._read, daemon=True).start()
