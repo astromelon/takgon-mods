@@ -190,7 +190,7 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
 
 ---
 - **추가 확인(2026-10-12)**: 폰트 내장은 mermaid-cli 12.0.0의 의도된 기본 동작이다(PR #1189·#1190, 릴리스 노트에 크기 증가와 `--no-font-embed` 명시). 다만 Recursive 폰트의 `unicode-range` 조각 4개를 다이어그램 문자와 무관하게 모두 넣는다. 영문 다이어그램은 Latin 조각 하나만, 한글 다이어그램은 어느 조각도 쓰지 않는다.
-- **업스트림 제안 초안**: `docs/issues/mermaid-cli-font-subset.md`(쓰인 문자와 겹치는 조각만 내장). 미제출.
+- **업스트림 제안**: `docs/issues/mermaid-cli-font-subset.md`(쓰인 문자와 겹치는 조각만 내장). 제출: mermaid-js/mermaid-cli#1211
 
 ## 9. 스킬과 이름이 겹친 명령 등록 거부가 3번과 겹쳐 초기화가 연쇄 실패
 

@@ -1,4 +1,5 @@
-> 대상 저장소: mermaid-js/mermaid-cli (feature_request 양식). 아직 제출하지 않은 초안.
+> 대상 저장소: mermaid-js/mermaid-cli (feature_request 양식).
+> 제출됨: https://github.com/mermaid-js/mermaid-cli/issues/1211 (2026-10-12)
 > 근거 측정: mmdc 12.0.0, Windows 11, 2026-10-12. 중복 검색("font embed", "no-font-embed", "svg size large", "Recursive font", "embedded font svg") 결과 관련 이슈 없음.
 
 ### Title
