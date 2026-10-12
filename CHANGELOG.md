@@ -16,6 +16,7 @@
 - `tools/e2e/test_harness.py`: 하네스의 가상 터미널(pyte) 화면 재구성·dirty 줄 수집 및 비표준 CSI(kitty 등) 필터에 대한 단위 테스트 추가.
 - `tools/e2e` 시나리오 `linear_issue`: 실제 Linear API로 `/issue` 검색·연결·중복 연결·해제 확인. 하네스가 새 셸을 열지 않아도 사용자 환경변수를 레지스트리에서 읽어 하위 세션에 넘긴다(`user_env`).
 - `CLAUDE.md`: Claude Code용 작업 안내 추가 — 개발·검증 명령(validate·test·tsc·`tools/e2e`), `src/index.ts` 단일 진입점과 모듈 폴더 구조, 엔진 제약에서 나온 코딩 규칙, `$.store` 키 규칙(`p/{projectId}/…`·`g/…`), 테스트 규약.
+- `.gitattributes`: 텍스트 파일 줄바꿈을 저장소·작업 트리 모두 LF로 통일(`* text=auto eol=lf`). `core.autocrlf` 설정과 무관하게 동작하며, 이미 저장소의 파일은 모두 LF라 재정규화는 없다.
 
 ## [0.4.0] - 2026-10-12
 
