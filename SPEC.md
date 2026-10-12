@@ -32,6 +32,10 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
 - `$.state`를 쓰므로 `types/index.d.ts` 계약이 필수이며, `claude plugin validate`가 `$.state` 키를 이 계약과 대조한다.
 
 # 런타임 제약 (반드시 준수)
+- **모듈 초기화 규칙 [수정: validate 확인]**: matcher 없는 `session.start`·`classic.SessionStart`는 각각 플러그인 전체에서
+  하나만 허용된다(core가 사용). 각 모듈은 `on('session.start', { isInteractive: true }, ...)`로 초기화하고(`-p` 실행에서는
+  돌지 않음), `/clear`·`/resume` 복원은 `on('classic.SessionStart', { source: 'clear' }, ...)`/`{ source: 'resume' }` +
+  `.catch(($, e, next) => next(e))`로 한다.
 - 외부 접근은 `$`로만 한다: `$.fs`, `$.http`, `$.process`, `$.clock`, `$.model`, `$.ui`, `$.store`, `$.state`,
   `$.session`, `$.command`, `$.prompt`, **`$.env`** **[추가]**.
   setTimeout, fetch, Node API, 동적 import()는 사용하지 않는다.
