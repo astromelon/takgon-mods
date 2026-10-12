@@ -33,7 +33,7 @@ python -m venv .venv
 | `mods_status` | – | 프로젝트 스킬 `browse`와 이름 충돌 → 거부 toast 1회, `/mods`에 ✓/✗ |
 | `browse` | – | `/browse <url>` 상태·제목·콘솔 에러·스크린샷 |
 | `linear_issue` | – | `/issue` 검색·연결·중복 연결·해제(실제 Linear API, `LINEAR_API_KEY` 필요, 이슈 상태는 바꾸지 않음) |
-| `probe_classic` | – | 엔진 제약 1번 재현(`probes/classic-probe`): user 플러그인의 `classic.*` 훅 bypass |
+| `probe_classic` | – | 엔진 제약 1번 재현(`probes/classic-probe`): user 플러그인의 `classic.*` 훅 bypass (로컬 전용: CI는 제외) |
 | `probe_catch` | – | 엔진 제약 3번 재현(`probes/catch-probe*`) |
 | `probe_clear_state` | – | 엔진 제약 2번 재현(`probes/state-probe`) |
 | `url_detect` | haiku | Bash 출력 URL 자동 감지 |
@@ -43,6 +43,8 @@ python -m venv .venv
 | `diagram` | haiku | M8 응답 분할 다이어그램 표시 |
 
 `probe_*`는 엔진 동작이 바뀌었는지 알려 주는 감시용이다. 실패하면 엔진이 고쳐졌을 수 있으니 엔진 제약 문서와 우회 코드를 다시 본다.
+
+CI는 `probe_catch`·`probe_clear_state`만 돌린다. `probe_classic`은 로컬에서 직접 돌려야 한다. GitHub Actions windows-latest 러너에서는 `classic.*` 훅 bypass가 재현되지 않아 실패하지만, 같은 Claude Code 2.1.296의 로컬 실행에서는 통과한다. 원인은 조사 중이다(`docs/engine-constraints.md` 1번 "CI 러너에서의 관찰" 참고).
 
 ## 주의
 
