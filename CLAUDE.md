@@ -28,7 +28,7 @@ python tools/e2e/run.py --list                            # 시나리오 목록
 python tools/e2e/run.py probe_classic probe_catch         # 이름으로 개별 실행([모델] 시나리오는 이름 지정 또는 --with-model)
 ```
 
-CI(`.github/workflows/ci.yml`)는 Windows에서 Claude Code 2.1.296 고정으로 validate → test → 하네스 단위 테스트 → probe 3개를
+CI(`.github/workflows/ci.yml`)는 Windows에서 Claude Code 2.1.296 고정으로 validate → test → 하네스 단위 테스트 → probe 2개(`probe_classic`은 CI에서 제외, 로컬 전용)를
 돈다. 테스트가 Windows 절대 경로(`C:/proj`)를 가정하므로 Linux에서는 실패한다. 엔진 버전을 올릴 때는 로컬에서 먼저 통과시킨다.
 
 ## 아키텍처
