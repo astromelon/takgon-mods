@@ -3,6 +3,12 @@
 이 프로젝트의 주요 변경 사항을 기록한다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따른다.
 
+## [Unreleased]
+
+### Added
+- `docs/issues/09-command-register-skill-conflict.md`: 엔진 제약 9번(스킬 이름 충돌로 초기화 연쇄 실패) claude-code 이슈 초안.
+- `docs/engine-constraints.md` 7번: 테스트 킷에서 엔진 거부는 `{ deny }`로 답해야 한다는 규약. (`c2c6c99`)
+
 ## [0.3.0] - 2026-10-12
 
 임계치 설정과 패널 사용성을 보강하고, 실제 세션에서 명령 등록 거부가 초기화를 연쇄로 막던 문제를 고친다.
