@@ -3,19 +3,25 @@
 이 프로젝트의 주요 변경 사항을 기록한다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따른다.
 
-## [Unreleased]
+## [0.4.0] - 2026-10-12
+
+`/mods`에 명령 등록 상태를 보여 주고, CI와 실제 세션 E2E 하네스를 갖추고, 실측한 엔진 제약을 업스트림 이슈로 올린다.
 
 ### Added
-- `docs/issues/mermaid-cli-font-subset.md`: mermaid-cli 저장소용 개선 제안(SVG에 쓰인 문자와 겹치는 `@font-face` 조각만 내장). 제출: mermaid-js/mermaid-cli#1211.
-- `tools/e2e`: 실제 대화형 세션을 의사 터미널로 띄워 확인하는 E2E 하네스와 시나리오 10개(모델 미사용 5개 기본 실행), 엔진 제약 1·2·3번 감시용 probe 플러그인(`probe_classic`·`probe_clear_state`·`probe_catch`).
+- **core**: `/mods` 목록의 모듈 줄마다 명령 등록 결과 표시(`/panel ✓`, `/browse ✗ (사유)`, 결과 없으면 `?`). 결과는 프로젝트 store `p/{pid}/core/commands`에도 남겨 `/clear` 뒤에도 보인다.
 - GitHub Actions CI(`.github/workflows/ci.yml`): push·PR마다 Windows에서 `claude plugin validate`·`claude plugin test` 실행(Claude Code 2.1.296 고정).
   테스트가 Windows 절대 경로(`C:/proj`)를 가정해 Linux에서는 실패하므로 Windows만 돌린다.
+- `tools/e2e`: 실제 대화형 세션을 의사 터미널로 띄워 확인하는 E2E 하네스와 시나리오 11개(모델 미사용 6개 기본 실행), 엔진 제약 1·2·3번 감시용 probe 플러그인(`probe_classic`·`probe_clear_state`·`probe_catch`).
 - `README.md`: 모듈·명령 표, `/mods` 등록 상태 표시와 `/panel`·`/tk-handoff` 임계치 사용법, 설치(private 저장소 `astromelon/takgon-mods`), 선택 의존성 준비 방법.
-- **core**: `/mods` 목록의 모듈 줄마다 명령 등록 결과 표시(`/panel ✓`, `/browse ✗ (사유)`, 결과 없으면 `?`). 결과는 프로젝트 store `p/{pid}/core/commands`에도 남겨 `/clear` 뒤에도 보인다.
-- `docs/issues/06-model-fork-no-timeout.md`, `docs/issues/07-testing-kit-engine-answer-conventions.md`: 엔진 제약 6·7번 claude-code 이슈 초안. 제출: anthropics/claude-code#101446, #101447.
-- `docs/issues/03-catch-skips-same-plugin-hooks.md`: 엔진 제약 3번(`.catch` 뒤 같은 플러그인 훅 건너뜀) claude-code 이슈 초안. 제출: anthropics/claude-code#101453.
-- `docs/issues/09-command-register-skill-conflict.md`: 엔진 제약 9번(스킬 이름 충돌로 초기화 연쇄 실패) claude-code 이슈 초안. 제출: anthropics/claude-code#101452 (4·5번은 #101450, #101451).
 - `docs/engine-constraints.md` 7번: 테스트 킷에서 엔진 거부는 `{ deny }`로 답해야 한다는 규약. (`c2c6c99`)
+- 업스트림 이슈(초안은 `docs/issues/`):
+  - anthropics/claude-code#101453 — 3번: `.catch` 뒤 같은 플러그인 훅 건너뜀
+  - anthropics/claude-code#101450 — 4번: matcher 없는 등록 1개 제한 문서화
+  - anthropics/claude-code#101451 — 5번: `$`·atom import 제한 문서화
+  - anthropics/claude-code#101446 — 6번: `$.model.fork` 시간 상한
+  - anthropics/claude-code#101447 — 7번: 테스트 킷 엔진 응답 규약 문서화
+  - anthropics/claude-code#101452 — 9번: 스킬 이름 충돌 시 명령 등록 거부
+  - mermaid-js/mermaid-cli#1211 — SVG에 쓰인 문자와 겹치는 `@font-face` 조각만 내장
 
 ## [0.3.0] - 2026-10-12
 
