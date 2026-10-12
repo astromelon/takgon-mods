@@ -1,8 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { CommandSpec, EngineInterface, On } from 'claude-code'
 
-import type { BrowserInfo } from '../../types'
-import { OUTPUT_GITIGNORE, markNotified, outputDir, refusalReason, registerCause } from '../shared/settings'
+import type { BrowserInfo, CommandRegistration } from '../../types'
+import { projectId } from '../shared/keys'
+import { OUTPUT_GITIGNORE, commandsKey, markNotified, outputDir, refusalReason, registerCause, toCommandMap } from '../shared/settings'
 import { t } from '../shared/i18n'
 import { ALL_ON } from '../shared/state'
 import {
@@ -27,27 +28,38 @@ import type { BrowserKey } from './messages'
 const langAtom = atom({ plugin: 'takgon-mods', key: 'lang' } as const, 'ko')
 const modulesAtom = atom({ plugin: 'takgon-mods', key: 'modules' } as const, ALL_ON)
 const notifiedAtom = atom({ plugin: 'takgon-mods', key: 'notified' } as const, [])
+const commandsAtom = atom({ plugin: 'takgon-mods', key: 'commands' } as const, {})
 const browserAtom = atom({ plugin: 'takgon-mods', key: 'browser' } as const, null)
 const attachConsoleAtom = atom({ plugin: 'takgon-mods', key: 'attachConsole' } as const, false)
 
 /**
  * 명령을 등록한다. 같은 이름의 사용자·내장 명령 때문에 거부되면 예외를 삼켜 다른 초기화(이 모듈과 뒤쪽 모듈)를 막지 않고,
- * 명령마다 세션당 1회 toast로 알린다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
+ * 명령마다 세션당 1회 toast로 알린다. 결과는 `/mods` 목록용으로 기록한다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
  */
 const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<void> => {
+  let result: CommandRegistration = { isListed: true }
   try {
     await $.command.register(spec)
   } catch (error) {
+    result = { isListed: false, reason: refusalReason(error) }
     try {
       const marked = markNotified(await read($, notifiedAtom), registerCause(spec.name))
       if (marked !== null) {
         await update($, notifiedAtom, () => marked)
-        const vars = { name: spec.name, reason: refusalReason(error) }
+        const vars = { name: spec.name, reason: result.reason ?? '' }
         $.ui.toast(t(await read($, langAtom), 'mods.registerRefused', vars))
       }
     } catch {
       // 알림 실패도 초기화를 막지 않는다.
     }
+  }
+  // `/mods` 목록이 보여 줄 수 있게 결과를 state와 프로젝트 store(`/clear` 뒤 복원용)에 남긴다.
+  try {
+    await update($, commandsAtom, map => ({ ...map, [spec.name]: result }))
+    const key = commandsKey(projectId(await $.session.root()))
+    await $.store.set(key, { ...toCommandMap(await $.store.get(key)), [spec.name]: result })
+  } catch {
+    // 기록 실패도 초기화를 막지 않는다.
   }
 }
 

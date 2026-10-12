@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { CommandSpec, EngineInterface, On, Timer } from 'claude-code'
 
-import type { IssueItem, Lang, PrStatus } from '../../types'
+import type { CommandRegistration, IssueItem, Lang, PrStatus } from '../../types'
 import { t, toLang } from '../shared/i18n'
 import { projectId, projectKey } from '../shared/keys'
-import { LANG_KEY, MODULES_KEY, markNotified, refusalReason, registerCause, toFlags } from '../shared/settings'
+import { LANG_KEY, MODULES_KEY, commandsKey, markNotified, refusalReason, registerCause, toCommandMap, toFlags } from '../shared/settings'
 import { ALL_ON } from '../shared/state'
 import {
   addLinked,
@@ -45,6 +45,7 @@ import type { M5Key } from './messages'
 const langAtom = atom({ plugin: 'takgon-mods', key: 'lang' } as const, 'ko')
 const modulesAtom = atom({ plugin: 'takgon-mods', key: 'modules' } as const, ALL_ON)
 const notifiedAtom = atom({ plugin: 'takgon-mods', key: 'notified' } as const, [])
+const commandsAtom = atom({ plugin: 'takgon-mods', key: 'commands' } as const, {})
 const prAtom = atom({ plugin: 'takgon-mods', key: 'pr' } as const, null)
 const issueResultsAtom = atom({ plugin: 'takgon-mods', key: 'issueResults' } as const, [])
 const linkedIssuesAtom = atom({ plugin: 'takgon-mods', key: 'linkedIssues' } as const, [])
@@ -52,22 +53,32 @@ const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [
 
 /**
  * 명령을 등록한다. 같은 이름의 사용자·내장 명령 때문에 거부되면 예외를 삼켜 다른 초기화(이 모듈과 뒤쪽 모듈)를 막지 않고,
- * 명령마다 세션당 1회 toast로 알린다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
+ * 명령마다 세션당 1회 toast로 알린다. 결과는 `/mods` 목록용으로 기록한다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
  */
 const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<void> => {
+  let result: CommandRegistration = { isListed: true }
   try {
     await $.command.register(spec)
   } catch (error) {
+    result = { isListed: false, reason: refusalReason(error) }
     try {
       const marked = markNotified(await read($, notifiedAtom), registerCause(spec.name))
       if (marked !== null) {
         await update($, notifiedAtom, () => marked)
-        const vars = { name: spec.name, reason: refusalReason(error) }
+        const vars = { name: spec.name, reason: result.reason ?? '' }
         $.ui.toast(t(await read($, langAtom), 'mods.registerRefused', vars))
       }
     } catch {
       // 알림 실패도 초기화를 막지 않는다.
     }
+  }
+  // `/mods` 목록이 보여 줄 수 있게 결과를 state와 프로젝트 store(`/clear` 뒤 복원용)에 남긴다.
+  try {
+    await update($, commandsAtom, map => ({ ...map, [spec.name]: result }))
+    const key = commandsKey(projectId(await $.session.root()))
+    await $.store.set(key, { ...toCommandMap(await $.store.get(key)), [spec.name]: result })
+  } catch {
+    // 기록 실패도 초기화를 막지 않는다.
   }
 }
 
