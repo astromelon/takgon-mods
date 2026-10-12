@@ -6,6 +6,7 @@ import {
   extractMermaid,
   imageCells,
   keepRecent,
+  slimSvg,
   splitMermaid,
 } from '../src/m8-diagram/mermaid'
 
@@ -51,6 +52,18 @@ describe('mermaid 추출(순수)', () => {
     expect(Object.keys(kept)[0]).toBe('h5')
     expect(imageCells(120)).toEqual({ columns: 100, rows: 30 })
     expect(imageCells(undefined)).toEqual({ columns: 76, rows: 25 })
+  })
+
+  test('slimSvg는 내장 폰트(@font-face) style 블록만 빼고 나머지 style은 남긴다', () => {
+    const font = `<style>/* Copyright */@font-face{font-family:"R";src:url(data:font/woff2;base64,${'A'.repeat(200_000)})}</style>`
+    const theme = '<style>#my-svg{font-family:"R",arial,sans-serif;}</style>'
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">${theme}${font}<g><rect/></g></svg>`
+
+    const slim = slimSvg(svg)
+
+    expect(slim).toBe(`<svg xmlns="http://www.w3.org/2000/svg">${theme}<g><rect/></g></svg>`)
+    expect(slim.length).toBeLessThan(131_072)
+    expect(slimSvg(SVG)).toBe(SVG)
   })
 })
 
