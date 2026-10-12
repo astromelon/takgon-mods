@@ -1,6 +1,7 @@
 import type { Register } from 'claude-code'
 
 import { registerCore } from './core'
+import { registerI18n } from './m1-i18n'
 
 /**
  * takgon-mods 단일 진입점. `hooks.json`의 `modules`는 경로 하나만 받으므로 각 모듈의 register를 여기서 묶는다.
@@ -11,4 +12,5 @@ import { registerCore } from './core'
  */
 export const register: Register = on => {
   registerCore(on)
+  registerI18n(on)
 }
