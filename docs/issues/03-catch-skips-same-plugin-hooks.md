@@ -1,3 +1,5 @@
+> 제출됨: https://github.com/anthropics/claude-code/issues/101453 (2026-10-12, 버그 양식으로 재구성)
+
 ### Title
 
 [mods] After a hook throws, `.catch`'s `next(e)` resumes at the next plugin and skips the failing plugin's remaining hooks
