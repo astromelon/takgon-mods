@@ -1,5 +1,6 @@
 {
   "name": "takgon",
+  "description": "tglee 개인 Claude Code mods 마켓플레이스(takgon-mods)",
   "owner": { "name": "tglee" },
   "plugins": [{ "name": "takgon-mods", "source": "./" }]
 }
