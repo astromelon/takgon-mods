@@ -13,7 +13,7 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
 |---|---|---|---|---|---|
 | 1 | user 플러그인의 `classic.*` 훅이 전부 건너뛰어짐 | 엔진 동작·문서 공백 | 실측 | 높음 | 훅 제거, 대체 이벤트 사용 |
 | 2 | `/clear` 뒤 `$.state` 전체 초기화, 재초기화 이벤트 없음 | 엔진 동작·API 공백 | 실측 | 높음 | `restored` 표시 + 지연 복원 |
-| 3 | 훅 실패 시 `.catch`가 답하면 같은 플러그인의 뒤쪽 훅이 실행되지 않음 | 엔진 동작 | 테스트 킷 | 중간 | 훅 안에서 예외 처리 |
+| 3 | 훅 실패 시 `.catch`의 `next(e)`가 같은 플러그인의 뒤쪽 훅을 건너뜀 | 엔진 동작·문서 공백 | 실측 | 중간 | 훅 안에서 예외 처리 |
 | 4 | matcher 없는 등록은 이벤트마다 플러그인 전체에서 1개 | 문서 공백 | validate | 중간 | 이벤트 배정표, 공유 matcher |
 | 5 | `$`·atom은 import 경계를 넘을 수 없음 | 문서 공백 | validate | 중간 | shared는 순수 함수만 |
 | 6 | `$.model.fork`에 시간 상한 옵션이 없음 | API 공백 | 타입 선언 | 낮음 | `$.clock.after`로 분리 |
@@ -69,21 +69,54 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
 - **제안**: `/clear`·`/resume` 뒤 새 세션에 대해 `session.start`를 보내거나(`reason` 필드 포함), 별도 `session.reset` 이벤트 제공.
   또는 `$.state`에 세션을 넘어 유지되는 범위(scope) 옵션 제공.
 
-## 3. 훅 실패 시 `.catch`가 답하면 같은 플러그인의 뒤쪽 훅이 실행되지 않음
+## 3. 훅 실패 시 `.catch`의 `next(e)`가 같은 플러그인의 뒤쪽 훅을 건너뜀
 
-- **분류**: 엔진 동작(확인 필요) · **근거**: 테스트 킷 · **심각도**: 중간
-- **현상**: 한 플러그인 안에 같은 이벤트 훅이 여러 개일 때, 바깥 훅이 예외를 던지고 `.catch(($, e, next) => next(e))`가 답하면
-  안쪽 훅이 실행되지 않는다.
-  - 사례 A: matcher 없는 `command.run` 훅이 `$.session.root` 실패로 예외 → 같은 플러그인의 `command.run {command:'mods'}` 훅이
-    실행되지 않고 `HooksError: no implementation for command.run`.
-  - 사례 B: `prompt.submit {origin:{kind:'composer'}}` 코치 훅이 `$.model.complete` 실패로 예외 → 뒤에 등록된 다른 모듈의
-    같은 이벤트 훅(context 첨부)이 실행되지 않음.
-- **기대**: `.catch`가 `next(e)`를 불렀으므로 아래 체인(같은 플러그인의 다른 훅 포함)이 이어질 것으로 기대했다.
-  reference는 `.catch`의 `next(e)`가 "훅이 `next`를 불렀으면 그 결과를 재생한다"고만 설명하고, 훅이 `next` 전에 실패했을 때
-  같은 플러그인의 뒤쪽 훅이 어떻게 되는지는 다루지 않는다.
-- **영향**: 모듈 하나의 부가 기능 실패가 다른 모듈의 핵심 기능을 막는다.
-- **대응**: 공유 이벤트 훅은 외부 호출을 훅 안에서 try/catch(`55aaa64`, `208de6f`).
-- **제안**: 실제 세션에서도 같은지 확인 필요. 의도된 동작이면 문서에 "같은 플러그인의 뒤쪽 훅은 건너뜀"을 명시.
+- **분류**: 엔진 동작 / 문서 공백 · **근거**: 실측(실제 세션 `claude -p --plugin-dir`, 테스트 킷에서도 동일) · **심각도**: 중간
+- **현상**: 한 플러그인 안에 같은 이벤트 훅이 여러 개일 때, 바깥 훅이 `next` 전에 예외를 던지고 `.catch(($, e, next) => next(e))`가
+  답하면 체인은 **다음 플러그인부터** 이어진다. 같은 플러그인의 안쪽 훅은 실행되지 않는다. 다른 플러그인의 훅과 엔진은 정상 실행된다.
+- **기대**: `.catch`가 `next(e)`를 불렀으므로 실패한 훅 바로 아래(같은 플러그인의 다음 훅)부터 이어질 것으로 기대했다.
+  reference는 `.catch`의 `next(e)`가 "훅이 `next`를 불렀으면 그 결과를 재생한다"고만 하고, 훅이 `next` 전에 실패했을 때
+  같은 플러그인의 나머지 훅이 어떻게 되는지는 다루지 않는다.
+- **재현(실험 플러그인 2개, 슬래시 명령만 사용)**:
+  ```ts
+  // catch-probe
+  on('session.start', async ($, e, next) => { await $.command.register({ name: 'probe2', description: 'probe' }); return next(e) })
+  on('command.run', async ($, e, next) => {            // 바깥: args가 boom이면 next 전에 예외
+    $.ui.log(`OUTER ran args=${e.args}`)
+    if (e.args === 'boom') throw new Error('outer boom')
+    return next(e)
+  }).catch(($, e, next) => { $.ui.log(`CATCH ran called=${String(next.called)}`); return next(e) })
+  on('command.run', { command: 'probe2' }, async ($, e) => {   // 안쪽: 같은 플러그인의 명령 처리
+    $.ui.log(`INNER ran args=${e.args}`)
+    return { text: `PROBE2 OK args=${e.args}` }
+  })
+  // catch-probe-b (다른 플러그인)
+  on('command.run', async ($, e, next) => {
+    $.ui.log(`B ran args=${e.args}`)
+    const result = await next(e)
+    $.ui.log(`B after next trace=${next.trace.map(t => `${t.plugin}:${t.outcome}`).join(',')}`)
+    return result
+  }).catch(($, e, next) => next(e))
+  ```
+  `claude -p "/probe2 boom" --plugin-dir catch-probe --plugin-dir catch-probe-b --debug-file log`
+- **근거**:
+  - 대조군 `/probe2` → 출력 `PROBE2 OK args=`, 로그 `OUTER ran` → `INNER ran` →
+    `catch-probe (user) answered command.run without next() ...; nothing beneath it ran`
+  - `/probe2 boom` → 출력 `catch-probe registered /probe2 but no command.run hook answered it`, 로그:
+    ```
+    [catch-probe] $.ui.log: OUTER ran args=boom
+    [catch-probe] $.ui.log: CATCH ran called=false
+    [catch-probe-b] $.ui.log: B ran args=boom beneath=0
+    [catch-probe-b] $.ui.log: B after next trace=takgon-mods:returned,engine:returned
+    [WARN] hook failed closed: catch-probe: errorKind=Error errorChars=10 (command.run; its .catch answered)
+    ```
+    `INNER ran`은 끝내 나오지 않는다.
+- **영향**: 모듈을 한 플러그인 안에 여럿 둔 구조에서, 공유 이벤트(`prompt.submit`·`command.run`) 훅 하나의 부가 기능이 실패하면
+  같은 플러그인의 다른 모듈 훅(명령 응답, context 첨부)이 함께 사라진다. takgon-mods에서 실제로 코치 판정 실패가 M2·M3·M7의
+  context 첨부를, core 복원 실패가 `/mods` 응답을 막았다.
+- **대응**: 공유 이벤트 훅은 외부 호출을 훅 안에서 try/catch해 훅 자체가 실패하지 않게 한다(`55aaa64`, `208de6f`).
+- **제안**: (a) `.catch`의 `next(e)`가 같은 플러그인의 다음 훅부터 재개하도록 하거나, (b) 현재 동작이 의도라면 reference에
+  "실패한 훅의 플러그인 안 나머지 훅은 건너뛴다"를 명시하고 validate가 같은 이벤트에 훅이 여러 개인 플러그인에 알림을 주기.
 
 ## 4. matcher 없는 등록은 이벤트마다 플러그인 전체에서 1개
 
