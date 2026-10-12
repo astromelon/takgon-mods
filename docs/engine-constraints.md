@@ -1,0 +1,147 @@
+# Claude Code mods 엔진 제약 — 실측 이슈 정리
+
+takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확인한 엔진 동작과 문서 공백이다.
+환경: Claude Code 2.1.296(타입 선언은 2.1.295), Windows 11, user 범위 설치(`takgon-mods@takgon`).
+
+근거 수준 표기:
+- **실측**: 실제 세션(`claude -p`, `--debug-file`, 의사 터미널로 띄운 대화형 세션)에서 확인
+- **테스트 킷**: `claude plugin test`에서 관찰(실제 세션과 다를 수 있음)
+- **validate**: `claude plugin validate`가 거부·보고한 내용
+- **추정**: 직접 확인하지 못함
+
+| # | 제목 | 분류 | 근거 | 심각도 | takgon-mods 대응 |
+|---|---|---|---|---|---|
+| 1 | user 플러그인의 `classic.*` 훅이 전부 건너뛰어짐 | 엔진 동작·문서 공백 | 실측 | 높음 | 훅 제거, 대체 이벤트 사용 |
+| 2 | `/clear` 뒤 `$.state` 전체 초기화, 재초기화 이벤트 없음 | 엔진 동작·API 공백 | 실측 | 높음 | `restored` 표시 + 지연 복원 |
+| 3 | 훅 실패 시 `.catch`가 답하면 같은 플러그인의 뒤쪽 훅이 실행되지 않음 | 엔진 동작 | 테스트 킷 | 중간 | 훅 안에서 예외 처리 |
+| 4 | matcher 없는 등록은 이벤트마다 플러그인 전체에서 1개 | 문서 공백 | validate | 중간 | 이벤트 배정표, 공유 matcher |
+| 5 | `$`·atom은 import 경계를 넘을 수 없음 | 문서 공백 | validate | 중간 | shared는 순수 함수만 |
+| 6 | `$.model.fork`에 시간 상한 옵션이 없음 | API 공백 | 타입 선언 | 낮음 | `$.clock.after`로 분리 |
+| 7 | 테스트 킷의 엔진 응답 규약이 문서에 없음 | 문서 공백 | 테스트 킷 | 낮음 | 테스트 헬퍼 |
+| 8 | (외부) mermaid-cli SVG가 `Svg` 한도를 넘음 | 서드파티 | 실측 | 낮음 | 폰트 블록 제거 |
+
+---
+
+## 1. user 플러그인의 `classic.*` 훅이 전부 건너뛰어짐
+
+- **분류**: 엔진 동작 / 문서 공백 · **근거**: 실측 · **심각도**: 높음
+- **현상**: 내장 보안 플러그인 `cc-plugin-sec-default`(prepend tier)가 `next.to`로 user tier를 건너뛰어, user 범위로 설치한
+  플러그인의 `classic.SessionStart`·`classic.SubagentStart`·`classic.SubagentStop`이 한 번도 실행되지 않는다.
+- **기대**: reference 문서는 "The settings hooks' own events are hookable as `classic.<Event>`"라고만 하고 이 제한을 언급하지 않는다.
+  user 플러그인에서 쓸 수 없다면 문서·validate가 알려야 한다(지금은 validate가 통과시키고 훅은 조용히 죽는다).
+- **재현**: user 범위에 `on('classic.SessionStart', ...)`를 가진 mod를 설치 → `claude -p "<서브에이전트를 띄우는 프롬프트>" --debug-file log`.
+- **근거(debug 로그)**:
+  ```
+  [DEBUG] hooks module takgon-mods@takgon loaded (worker, environment 2, tier user); events: ...classic.SessionStart,...classic.SubagentStart,classic.SubagentStop...
+  [DEBUG] takgon-mods: classic.SessionStart bypassed by cc-plugin-sec-default (tier user); beneath runs
+  [DEBUG] takgon-mods: classic.SubagentStart bypassed by cc-plugin-sec-default (tier user); beneath runs
+  [DEBUG] takgon-mods: classic.SubagentStop bypassed by cc-plugin-sec-default (tier user); beneath runs
+  ```
+- **영향**: `/clear`·`/resume` 복원(`classic.SessionStart {source}`)과 서브에이전트 추적이 동작하지 않았다. 테스트 킷에서는 정상
+  동작해 실제 세션에서만 드러났다.
+- **대응**: `classic.*` 훅을 모두 제거. 서브에이전트는 `agent.spawn` + `$.agent.list()`, 복원은 2번 방식(`208de6f`).
+- **제안**: (a) 의도된 정책이면 reference와 validate 경고에 "user tier에는 classic 이벤트가 전달되지 않음"을 명시.
+  (b) 테스트 킷도 같은 정책을 재현해 테스트와 실제 동작을 일치.
+
+## 2. `/clear` 뒤 `$.state` 전체 초기화, 재초기화 이벤트 없음
+
+- **분류**: 엔진 동작 / API 공백 · **근거**: 실측 · **심각도**: 높음
+- **현상**: `/clear` 뒤에는 세션 id가 바뀌고 `$.state`가 모두 초기값으로 돌아간다. 그런데 `session.start`가 다시 오지 않는다
+  (이 부분은 `SessionEndInput` 문서에 명시돼 있다). 등록한 명령과 `$.clock` 타이머는 유지된다.
+  `session.end {reason:'clear'}` 훅에서 state에 쓴 값도 새 세션에는 남지 않았다.
+- **기대**: state가 세션 단위로 비워진다면 새 세션의 시작을 알리는 이벤트가 있어야 한다. 지금은 1번 때문에
+  `classic.SessionStart {source:'clear'}`도 user 플러그인에 오지 않아, 남는 수단이 없다.
+- **재현(실험 mod, `--plugin-dir`, stream-json 입력)**:
+  ```ts
+  on('session.end', { reason: 'clear' }, async ($, e, next) => { await update($, ends, l => [...l, 'clear']); return next(e) })
+  on('command.run', { command: 'probe' }, async ($, e) => { if (e.args.startsWith('set ')) await update($, v, () => e.args.slice(4))
+    return { text: `PROBE v=${await read($, v)} ends=${(await read($, ends)).join(',')} sid=${(await $.session.id()).slice(0, 6)}` } })
+  ```
+  입력 `/probe set A` → `/clear` → `/probe` 결과:
+  ```
+  PROBE v=A ends= sid=63aa8b
+  PROBE v=unset ends= sid=76f253
+  ```
+- **영향**: 모듈 on/off·언어·핀·할 일 등 화면 상태가 `/clear` 뒤 기본값으로 돌아갔다. 복원 시점이 없어 band·pane은 사용자의
+  첫 입력 전까지 비어 있다.
+- **대응**: `restored: string[]` state를 두고, 비어 있으면 각 모듈이 첫 프롬프트·명령·턴 완료 때 store에서 복원(`208de6f`).
+  대화형 세션에서 모듈 설정·핀·할 일 복원을 확인했다(7/7).
+- **제안**: `/clear`·`/resume` 뒤 새 세션에 대해 `session.start`를 보내거나(`reason` 필드 포함), 별도 `session.reset` 이벤트 제공.
+  또는 `$.state`에 세션을 넘어 유지되는 범위(scope) 옵션 제공.
+
+## 3. 훅 실패 시 `.catch`가 답하면 같은 플러그인의 뒤쪽 훅이 실행되지 않음
+
+- **분류**: 엔진 동작(확인 필요) · **근거**: 테스트 킷 · **심각도**: 중간
+- **현상**: 한 플러그인 안에 같은 이벤트 훅이 여러 개일 때, 바깥 훅이 예외를 던지고 `.catch(($, e, next) => next(e))`가 답하면
+  안쪽 훅이 실행되지 않는다.
+  - 사례 A: matcher 없는 `command.run` 훅이 `$.session.root` 실패로 예외 → 같은 플러그인의 `command.run {command:'mods'}` 훅이
+    실행되지 않고 `HooksError: no implementation for command.run`.
+  - 사례 B: `prompt.submit {origin:{kind:'composer'}}` 코치 훅이 `$.model.complete` 실패로 예외 → 뒤에 등록된 다른 모듈의
+    같은 이벤트 훅(context 첨부)이 실행되지 않음.
+- **기대**: `.catch`가 `next(e)`를 불렀으므로 아래 체인(같은 플러그인의 다른 훅 포함)이 이어질 것으로 기대했다.
+  reference는 `.catch`의 `next(e)`가 "훅이 `next`를 불렀으면 그 결과를 재생한다"고만 설명하고, 훅이 `next` 전에 실패했을 때
+  같은 플러그인의 뒤쪽 훅이 어떻게 되는지는 다루지 않는다.
+- **영향**: 모듈 하나의 부가 기능 실패가 다른 모듈의 핵심 기능을 막는다.
+- **대응**: 공유 이벤트 훅은 외부 호출을 훅 안에서 try/catch(`55aaa64`, `208de6f`).
+- **제안**: 실제 세션에서도 같은지 확인 필요. 의도된 동작이면 문서에 "같은 플러그인의 뒤쪽 훅은 건너뜀"을 명시.
+
+## 4. matcher 없는 등록은 이벤트마다 플러그인 전체에서 1개
+
+- **분류**: 문서 공백 · **근거**: validate · **심각도**: 중간
+- **현상**: 어떤 이벤트든 matcher 없이 두 번 등록하면 모듈 로드가 거부된다. matcher가 있으면 같은 matcher를 여러 번 써도 된다.
+  ```
+  on("turn.complete") is registered twice without a matcher; the first is at ...index.tsx:2
+  ```
+- **영향**: 모듈을 파일별로 나누면 `session.start`·`turn.complete`·`prompt.submit` 같은 공용 이벤트를 나눠 쓸 수 없다.
+  플러그인 설계 초기에 알아야 하는 제약인데 skill·reference에 없다.
+- **대응**: 공유 matcher(`{ isInteractive: true }`, `{ reason: 'answer' }`, `{ origin: { kind: 'composer' } }`)와 이벤트 배정표(SPEC).
+- **제안**: reference에 규칙 명시. 판별 필드가 없는 이벤트(`session.measure` 등)를 여러 모듈이 구독할 방법 제공.
+
+## 5. `$`·atom은 import 경계를 넘을 수 없음
+
+- **분류**: 문서 공백 · **근거**: validate · **심각도**: 중간
+- **현상**:
+  ```
+  $ is passed to "startSession", imported from "./core": $ is followed only into a function declared in this same file, never across an import
+  $ is passed to "start", which is not a function declared at the top of this file
+  the state library's update takes a source ... written there or in a const of this file
+  ```
+  `on`은 import한 함수로 넘겨도 된다.
+- **영향**: `$`를 쓰는 공통 헬퍼(toast 1회, 출력 폴더 생성 등)를 공유할 수 없어 모듈마다 같은 코드가 반복된다.
+  모듈 간 공유 state도 파일마다 같은 리터럴로 atom을 다시 선언해야 한다.
+- **제안**: reference의 "A mod in one paragraph"에 규칙 명시. 가능하면 import한 함수 안으로의 정적 추적 지원.
+
+## 6. `$.model.fork`에 시간 상한 옵션이 없음
+
+- **분류**: API 공백 · **근거**: 타입 선언(`ModelForkRequest`는 `prompt`만) · **심각도**: 낮음
+- **현상**: `$.model.complete`는 `timeoutMs`를 받지만 `$.model.fork`는 받지 않는다. `turn.complete` 훅에서 fork를 기다리면 턴
+  마무리가 fork 시간만큼 늦어질 수 있다(hook 예산은 `$` 호출 대기를 세지 않는다).
+- **대응**: `$.clock.after(0, ...)`로 떼어 내고 한 번에 하나만 실행(`208de6f`).
+- **제안**: `ModelForkRequest`에 `timeoutMs`·`maxTokens` 추가.
+
+## 7. 테스트 킷의 엔진 응답 규약이 문서에 없음
+
+- **분류**: 문서 공백 · **근거**: 테스트 킷 · **심각도**: 낮음
+- **현상**(시행착오로 알아낸 것):
+  - op(`$.x.y` 호출) 훅은 `{ value: 결과 }`를 반환해야 한다(값만 반환하면 "not a result object").
+  - 테스트의 `$`(Engine)에는 `store` 명사가 없다. `mock.store`로 주입하고 동작으로 검증해야 한다.
+  - `session.start`, `session.root`, `command.register` 등은 테스트 훅이 직접 답해야 한다. 답하지 않으면 플러그인 초기화 훅이 조용히 skip된다.
+  - `$.command.run`은 `origin`·`presentation`까지 전체 입력을 받는다.
+  - `$.ui.ask`는 `tool.call {tool:'AskUserQuestion'}`으로 mock한다.
+- **제안**: `claude-code/testing` 문서에 "엔진 자리 훅 작성법" 절과 기본 응답 helper(`mock.session()` 확장 등) 제공.
+
+## 8. (외부) mermaid-cli SVG가 `Svg` 표시 한도를 넘음
+
+- **분류**: 서드파티(`@mermaid-js/mermaid-cli` 12.0.0) · **근거**: 실측 · **심각도**: 낮음
+- **현상**: mmdc가 Recursive 폰트 4종을 base64로 SVG에 넣어, 노드 3개 다이어그램도 197,069자(폰트 167,055자)다.
+  desktop `Svg`의 `source` 한도(131,072자)를 넘는다.
+- **대응**: 표시할 때만 `@font-face` style 블록 제거 → 29,999자(`b07f40b`).
+
+---
+
+## 기타 관찰(이슈 아님)
+
+- `claude -p`(비대화형)는 `session.start`의 `isInteractive`가 false라, takgon-mods 모듈 초기화(명령 등록 등)가 돌지 않는다. 설계상 의도다.
+- Git Bash에서 `claude -p "/mods"`를 실행하면 MSYS가 `/mods`를 경로(`C:/Program Files/Git/mods`)로 바꾼다.
+  `MSYS_NO_PATHCONV=1`이 필요하다(엔진 문제 아님).
+- 설치 직후 이미 떠 있는 세션은 새 PATH를 보지 못해, 설치한 CLI(gh 등)를 `$.process.run`이 찾지 못한다.
