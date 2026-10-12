@@ -1,3 +1,5 @@
+> 제출됨: https://github.com/anthropics/claude-code/issues/101452 (2026-10-12, 버그 양식으로 재구성)
+
 ### Title
 
 [mods] `$.command.register` is refused when a user/project skill has the same name — undocumented, and it can silently disable unrelated parts of a plugin
