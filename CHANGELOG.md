@@ -5,12 +5,17 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-12
+
+문서·줄바꿈 정리 릴리스. 동작 변경은 없다.
+
 ### Changed
 - `tools/e2e` 화면 판정을 가상 터미널(pyte) 재구성 방식으로 변경. TUI 차분 렌더 때문에 원시 출력에서 빠지던 줄(예: `/issue` 검색 결과 제목·첫 행)도 판정된다. `linear_issue` 판정을 원래의 엄격한 형태로 되돌림.
 - `tools/e2e` 시나리오 `mods_status`: 거부 toast 판정을 사유 문구 전체(`it is the user's /browse`)로 엄격하게 변경.
 - `SPEC.md` 런타임 제약·저장소 규칙 절의 `classic.SessionStart` 복원 안내를 실측(엔진 제약 1·2번: user 플러그인의 `classic.*` 훅 bypass, `/clear` 뒤 각 모듈 첫 훅에서 `$.store` 지연 복원)에 맞게 수정.
 - CI(`.github/workflows/ci.yml`)의 e2e probe 단계에서 `probe_classic` 제외(`probe_catch`, `probe_clear_state`만 실행). CI 러너에서는 `classic.*` 훅 bypass가 재현되지 않아 실패한다(같은 2.1.296의 로컬 실행은 통과). 제약 1번 감시는 로컬에서 `python tools/e2e/run.py probe_classic`으로 한다.
 - `SPEC.md` 공통 절의 꺼진 모듈 동작을 실제 코드에 맞게 수정: 타이머는 cancel하지 않고 콜백에서 on/off를 확인해 건너뛰며, 꺼진 모듈의 명령은 `next(e)` 대신 "꺼짐" 안내로 답한다.
+- `docs/engine-constraints.md` 1번: CI 러너(`windows-latest`, Claude Code 2.1.296)에서는 `classic.*` 훅 bypass가 재현되지 않고 로컬에서는 재현된다는 관찰 기록(원인은 미확인).
 
 ### Added
 - GitHub Actions CI(`.github/workflows/ci.yml`): `tools/e2e` 하네스 단위 테스트 및 probe 시나리오 3개(`probe_classic`, `probe_catch`, `probe_clear_state`) 실행 단계 추가.
