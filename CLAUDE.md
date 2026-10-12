@@ -69,7 +69,7 @@ CI(`.github/workflows/ci.yml`)는 Windows에서 Claude Code 2.1.296 고정으로
 ### UI·공통 동작
 
 - UI 문자열은 전부 i18n 키(`messages.ts` + `src/shared/i18n.ts`의 `t(lang, key, vars)`), 언어 기본값 `ko`.
-- 꺼진 모듈(`g/core/modules`, `/mods <모듈> off`)은 훅에서 즉시 `next(e)`를 반환하고, 자기 명령에는 "꺼짐" 안내로 답한다.
+- 꺼진 모듈(`g/core/modules`, `/mods <모듈> off`)의 훅은 자기 기능을 건너뛰고 `next(e)`로 넘기고, 자기 명령에는 "꺼짐" 안내로 답한다.
   타이머는 cancel하지 않고 콜백에서 건너뛴다(M5 PR 폴링).
 - 외부 연동(gh, glab, Linear, playwright, mmdc) 실패 시 해당 요소만 숨기고 원인별 1회 toast.
 - 렌더는 `e.surface`로 분기한다(terminal은 `Svg` 없음·`Image`는 kitty 계열만, desktop은 `Svg` 131,072자 상한). 모든 control에 key.
