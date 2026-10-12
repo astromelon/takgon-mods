@@ -44,7 +44,7 @@ python -m venv .venv
 
 `probe_*`는 엔진 동작이 바뀌었는지 알려 주는 감시용이다. 실패하면 엔진이 고쳐졌을 수 있으니 엔진 제약 문서와 우회 코드를 다시 본다.
 
-CI는 `probe_catch`·`probe_clear_state`만 돌린다. `probe_classic`은 로컬에서 직접 돌려야 한다. GitHub Actions windows-latest 러너에서는 `classic.*` 훅 bypass가 재현되지 않아 실패하지만, 같은 Claude Code 2.1.296의 로컬 실행에서는 통과한다. 원인은 조사 중이다(`docs/engine-constraints.md` 1번 "CI 러너에서의 관찰" 참고).
+CI는 `probe_catch`·`probe_clear_state`만 돌린다. `probe_classic`은 로컬에서 직접 돌려야 한다. GitHub Actions windows-latest 러너에서는 `classic.*` 훅 bypass가 재현되지 않아 실패하지만, 같은 Claude Code 2.1.296의 로컬 실행에서는 통과한다. 로그인 없는 러너에는 bypass 주체인 `cc-plugin-sec-default`가 놓이지 않기 때문이다(`docs/engine-constraints.md` 1번 "CI 러너에서의 관찰" 참고).
 
 ## 주의
 

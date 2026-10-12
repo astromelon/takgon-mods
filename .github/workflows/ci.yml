@@ -51,26 +51,7 @@ jobs:
         run: python -m unittest discover -s tools/e2e -p "test_*.py"
 
       # 엔진 제약 감시용 e2e probe 2개(catch, clear state)를 실행한다(모델 호출 없음).
-      # probe_classic(제약 1번)은 CI 러너에서 classic.* 훅이 bypass되지 않아 실패하므로 로컬에서만 돌린다.
+      # probe_classic(제약 1번)은 CI 러너에 cc-plugin-sec-default가 놓이지 않아(로그인 없음, docs/engine-constraints.md 1번)
+      # classic.* 훅이 bypass되지 않으므로 로컬에서만 돌린다.
       - name: Run e2e probes
         run: python tools/e2e/run.py probe_catch probe_clear_state
-
-      # 임시 진단: probe_classic이 CI에서 실패하는 원인(cc-plugin-sec-default가 놓이지 않는 것으로 추정)을
-      # debug 로그로 확인한다. 실패해도 CI 결과에는 영향을 주지 않는다. 원인이 확정되면 이 두 단계를 정리한다.
-      - name: Diagnose probe_classic (non-blocking)
-        continue-on-error: true
-        run: python tools/e2e/run.py probe_classic
-
-      - name: Show security plugin seating
-        if: always()
-        continue-on-error: true
-        run: Get-ChildItem tools/e2e/logs -Filter "*.debug.log" -ErrorAction SilentlyContinue | ForEach-Object { "== $($_.Name)"; Select-String -Path $_.FullName -Pattern "seated|sec-default|classic-probe" | ForEach-Object { $_.Line } }
-
-      - name: Upload e2e debug logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-debug-logs
-          path: tools/e2e/logs/
-          if-no-files-found: warn
-          retention-days: 14
