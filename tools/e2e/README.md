@@ -32,6 +32,7 @@ python -m venv .venv
 | `clear_restore` | – | `/clear` 뒤 모듈 on/off·핀·할 일 복원 |
 | `mods_status` | – | 프로젝트 스킬 `browse`와 이름 충돌 → 거부 toast 1회, `/mods`에 ✓/✗ |
 | `browse` | – | `/browse <url>` 상태·제목·콘솔 에러·스크린샷 |
+| `probe_classic` | – | 엔진 제약 1번 재현(`probes/classic-probe`): user 플러그인의 `classic.*` 훅 bypass |
 | `probe_catch` | – | 엔진 제약 3번 재현(`probes/catch-probe*`) |
 | `probe_clear_state` | – | 엔진 제약 2번 재현(`probes/state-probe`) |
 | `url_detect` | haiku | Bash 출력 URL 자동 감지 |

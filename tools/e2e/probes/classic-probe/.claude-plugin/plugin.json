@@ -1,0 +1,1 @@
+{ "name": "classic-probe", "version": "0.0.1", "description": "엔진 제약 1번(user 플러그인의 classic.* 훅 bypass) 감시용", "author": { "name": "tglee" } }
