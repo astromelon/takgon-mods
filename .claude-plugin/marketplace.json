@@ -1,0 +1,5 @@
+{
+  "name": "takgon",
+  "owner": { "name": "tglee" },
+  "plugins": [{ "name": "takgon-mods", "source": "./" }]
+}
