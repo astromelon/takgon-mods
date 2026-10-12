@@ -160,6 +160,7 @@ describe('M6 명령·패널', () => {
       expect(await ui.find({ type: 'Text', text: /핀이 없습니다/ })).toBeDefined()
       await ui.press({ key: 'tab-usage' })
       expect(await ui.find({ type: 'Text', text: /사용량 측정값이 없습니다/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /경고 임계치: 80%/ })).toBeDefined()
       await ui.press({ key: 'tab-handoff' })
       expect(await ui.find({ type: 'Text', text: /인수인계 문서가 없습니다/ })).toBeDefined()
       await ui.unmount()
@@ -273,15 +274,21 @@ describe('M6 명령·패널', () => {
     expect((await ui.find({ key: 'tab-pinboard' }))?.props).toMatchObject({ variant: 'secondary', hotkey: '1' })
   })
 
-  test('/clear 뒤처럼 state가 비어 있으면 첫 명령에서 store의 핀을 복원한다', async ($, on) => {
+  test('/clear 뒤처럼 state가 비어 있으면 첫 명령에서 store의 핀·임계치를 복원한다', async ($, on) => {
     engine(on)
     const pid = projectId('C:/proj')
-    mock.store(on, { [`p/${pid}/m6/pins`]: [{ id: 'p1', text: '저장된 결정', createdAt: 1 }] })
+    mock.store(on, {
+      [`p/${pid}/m6/pins`]: [{ id: 'p1', text: '저장된 결정', createdAt: 1 }],
+      'g/m6/threshold': 65,
+    })
 
     // session.start 없이(= /clear 직후) 바로 명령을 실행한다.
     const listed = await $.command.run(run('pin', 'list'))
 
     expect(listed.text).toContain('저장된 결정')
+    const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'desktop', component: 'Pane', props: PANE, requestId: 'takgon-panel' })
+    await ui.press({ key: 'tab-usage' })
+    expect(await ui.find({ type: 'Text', text: /경고 임계치: 65%/ })).toBeDefined()
   })
 
   test('/panel threshold로 바꾼 임계치로 경고하고, 인자 없이 부르면 현재 값을 보여준다', async ($, on) => {
@@ -302,6 +309,11 @@ describe('M6 명령·패널', () => {
     expect((await $.command.run(run('panel', 'threshold 50'))).text).toContain('50%')
     await $.session.measure(at60)
     expect(toasts.filter(text => text.includes('컨텍스트'))).toHaveLength(1)
+
+    // Usage 탭에도 바뀐 임계치가 보인다.
+    const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'terminal', component: 'Pane', props: PANE, requestId: 'takgon-panel' })
+    await ui.press({ key: 'tab-usage' })
+    expect(await ui.find({ type: 'Text', text: /경고 임계치: 50%/ })).toBeDefined()
   })
 
   test('session.measure에서 컨텍스트 80% 이상이면 세션당 1회만 toast하고 Usage 탭에 표시한다', async ($, on) => {
