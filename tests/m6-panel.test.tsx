@@ -5,6 +5,7 @@ import { projectId } from '../src/shared/keys'
 import {
   addPin,
   fit,
+  parsePanelArgs,
   parsePinArgs,
   applyAgentStatuses,
   startAgent,
@@ -112,6 +113,17 @@ const run = (command: string, args = '') => ({
   origin: { kind: 'composer' },
   presentation: { isFullscreen: false, columns: 120 },
 }) as const
+
+describe('/panel 인자(순수)', () => {
+  test('탭 이름을 주면 그 탭으로 연다', () => {
+    expect(parsePanelArgs('')).toBe('open')
+    expect(parsePanelArgs('close')).toBe('close')
+    expect(parsePanelArgs(' Agents ')).toBe('agents')
+    expect(parsePanelArgs('usage')).toBe('usage')
+    expect(parsePanelArgs('help')).toBe('help')
+    expect(parsePanelArgs('nope')).toBe('help')
+  })
+})
 
 describe('M6 명령·패널', () => {
   test('/panel은 takgon-panel pane을 열고, close는 닫는다', async ($, on) => {
@@ -236,6 +248,18 @@ describe('M6 명령·패널', () => {
     expect((await ui.findAll({ type: 'Text', text: /Plan/ })).map(one => one.text).join('|')).toMatch(
       /실행 중.*실패|실패.*실행 중/,
     )
+  })
+
+  test('/panel agents는 Agents 탭으로 열고, 탭 버튼에는 숫자 단축키가 있다', async ($, on) => {
+    engine(on)
+    mock.store(on)
+    await $.session.start(START)
+
+    await $.command.run(run('panel', 'agents'))
+
+    const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'terminal', component: 'Pane', props: PANE, requestId: 'takgon-panel' })
+    expect((await ui.find({ key: 'tab-agents' }))?.props).toMatchObject({ variant: 'primary', hotkey: '3' })
+    expect((await ui.find({ key: 'tab-pinboard' }))?.props).toMatchObject({ variant: 'secondary', hotkey: '1' })
   })
 
   test('/clear 뒤처럼 state가 비어 있으면 첫 명령에서 store의 핀을 복원한다', async ($, on) => {

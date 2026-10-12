@@ -39,15 +39,18 @@ export const parsePinArgs = (args: string): PinAction => {
 }
 
 /** `/panel` 인자의 해석 결과. */
-export type PanelAction = 'open' | 'close' | 'usage'
+export type PanelAction = 'open' | 'close' | 'help' | PanelTab
 
-/** `/panel` 인자: 없음 → 열기, `close` → 닫기, 그 외 → 사용법. */
+/** `/panel [close|<탭>]` 해석. 탭 이름(`agents` 등)이면 그 탭으로 열고, 모르는 인자는 사용법. */
 export const parsePanelArgs = (args: string): PanelAction => {
   const text = args.trim().toLowerCase()
   if (text === '') {
     return 'open'
   }
-  return text === 'close' ? 'close' : 'usage'
+  if (text === 'close') {
+    return 'close'
+  }
+  return TABS.find(tab => tab === text) ?? 'help'
 }
 
 /** 대화 행 중 마지막 assistant 행의 텍스트. 비어 있으면 `undefined`. */

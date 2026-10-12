@@ -83,7 +83,7 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 /** 세션 시작: 명령 등록과 복원. */
 const init = async ($: EngineInterface): Promise<void> => {
   const lang = await langOf($)
-  await $.command.register({ name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close]' })
+  await $.command.register({ name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close | pinboard | tasks | agents | usage | handoff]' })
   await $.command.register({ name: 'pin', description: tr(lang, 'pin.description'), argumentHint: '[<text>|list]' })
   await ensureRestored($)
 }
@@ -197,12 +197,15 @@ export const registerPanel = (on: On): void => {
       return { text: tr(lang, 'panel.off') }
     }
     const action = parsePanelArgs(e.args)
-    if (action === 'usage') {
+    if (action === 'help') {
       return { text: tr(lang, 'panel.usage') }
     }
     if (action === 'close') {
       await $.ui.close({ id: 'takgon-panel' })
       return { text: tr(lang, 'panel.closed') }
+    }
+    if (action !== 'open') {
+      await update($, panelTabAtom, () => action)
     }
     // 첫 measure 전이라도 Usage 탭이 비지 않게 한 번 채운다(breakdown 없이 무료 호출).
     if ((await read($, usageAtom)) === null) {
@@ -279,9 +282,10 @@ export const registerPanel = (on: On): void => {
 
     const tabs = (
       <Box flexDirection="row">
-        {TABS.map(one => (
+        {TABS.map((one, i) => (
           <Button
             key={`tab-${one}`}
+            hotkey={String(i + 1)}
             variant={one === tab ? 'primary' : 'secondary'}
             onPress={() => update($, panelTabAtom, () => one)}
           >
