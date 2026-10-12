@@ -1,0 +1,9 @@
+{
+  "name": "takgon-mods-tools",
+  "private": true,
+  "description": "tools/headless.mjs 실행용 의존성(플러그인 모듈과 무관)",
+  "type": "module",
+  "dependencies": {
+    "playwright": "^1.64.0"
+  }
+}
