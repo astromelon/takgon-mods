@@ -66,3 +66,17 @@ export const outputDir = (root: string): string =>
 
 /** 산출물 폴더의 `.gitignore` 내용. 어느 저장소에서도 미추적 파일로 잡히지 않게 한다. */
 export const OUTPUT_GITIGNORE = '*\n'
+
+/** 퍼센트 임계치로 유효한지: 1~99 정수. */
+const isPercent = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 99
+
+/** 저장된 퍼센트 임계치. 없거나 범위 밖이면 `fallback`. */
+export const toPercent = (value: unknown, fallback: number): number => (isPercent(value) ? value : fallback)
+
+/** 명령 인자의 퍼센트(숫자만, 1~99). 아니면 null. */
+export const parsePercent = (text: string): number | null => {
+  const trimmed = text.trim()
+  const value = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN
+  return isPercent(value) ? value : null
+}

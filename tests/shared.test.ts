@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { t } from '../src/shared/i18n'
 import { globalKey, projectId, projectKey } from '../src/shared/keys'
-import { parseModsArgs } from '../src/shared/settings'
+import { parseModsArgs, parsePercent, toPercent } from '../src/shared/settings'
 
 const mods = ($: Engine, args: string) =>
   $.command.run({
@@ -33,6 +33,26 @@ describe('i18n', () => {
   test('언어별 문자열과 변수 치환', () => {
     expect(t('ko', 'mods.toggled', { module: 'panel', state: 'off' })).toContain('panel')
     expect(t('en', 'mods.title')).not.toBe(t('ko', 'mods.title'))
+  })
+})
+
+describe('퍼센트 설정(임계치)', () => {
+  test('저장 값은 1~99 정수만, 그 밖은 기본값', () => {
+    expect(toPercent(30, 80)).toBe(30)
+    expect(toPercent(undefined, 80)).toBe(80)
+    expect(toPercent(0, 80)).toBe(80)
+    expect(toPercent(100, 75)).toBe(75)
+    expect(toPercent(12.5, 80)).toBe(80)
+    expect(toPercent('30', 80)).toBe(80)
+  })
+
+  test('입력 문자열은 1~99 정수만 받는다', () => {
+    expect(parsePercent('30')).toBe(30)
+    expect(parsePercent(' 99 ')).toBe(99)
+    expect(parsePercent('0')).toBeNull()
+    expect(parsePercent('100')).toBeNull()
+    expect(parsePercent('abc')).toBeNull()
+    expect(parsePercent('5%')).toBeNull()
   })
 })
 

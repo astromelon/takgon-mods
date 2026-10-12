@@ -3,12 +3,13 @@ import type { EngineInterface, On } from 'claude-code'
 
 import type { AgentRun, Lang, PanelTab, Pin, TaskItem, UsageSnapshot } from '../../types'
 import { toLang } from '../shared/i18n'
-import { projectId, projectKey } from '../shared/keys'
-import { markNotified } from '../shared/settings'
+import { globalKey, projectId, projectKey } from '../shared/keys'
+import { markNotified, toPercent } from '../shared/settings'
 import { ALL_ON } from '../shared/state'
 import {
   PANE_ID,
   TABS,
+  USAGE_THRESHOLD,
   addPin,
   fit,
   formatTokens,
@@ -83,7 +84,7 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 /** 세션 시작: 명령 등록과 복원. */
 const init = async ($: EngineInterface): Promise<void> => {
   const lang = await langOf($)
-  await $.command.register({ name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close | pinboard | tasks | agents | usage | handoff]' })
+  await $.command.register({ name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close | pinboard | tasks | agents | usage | handoff | threshold <1-99>]' })
   await $.command.register({ name: 'pin', description: tr(lang, 'pin.description'), argumentHint: '[<text>|list]' })
   await ensureRestored($)
 }
@@ -125,11 +126,15 @@ const toggle = async ($: EngineInterface, id: string): Promise<void> => {
 }
 
 /** 사용량 상태를 갱신하고 80% 이상 항목을 원인별 세션당 1회 toast한다. */
+/** 사용량 경고 임계치(%) 전역 store 키. 없으면 80. */
+const THRESHOLD_KEY = globalKey('m6', 'threshold')
+
 const measure = async ($: EngineInterface, reading: UsageReading): Promise<void> => {
   const snapshot = toSnapshot(reading, await $.clock.now())
   await update($, usageAtom, () => snapshot)
   const lang = await langOf($)
-  for (const alert of usageAlerts(snapshot)) {
+  const threshold = toPercent(await $.store.get(THRESHOLD_KEY), USAGE_THRESHOLD)
+  for (const alert of usageAlerts(snapshot, threshold)) {
     const marked = markNotified(await read($, notifiedAtom), alert.cause)
     if (marked === null) {
       continue
@@ -203,6 +208,13 @@ export const registerPanel = (on: On): void => {
     if (action === 'close') {
       await $.ui.close({ id: 'takgon-panel' })
       return { text: tr(lang, 'panel.closed') }
+    }
+    if (typeof action === 'object') {
+      if (action.value !== null) {
+        await $.store.set(THRESHOLD_KEY, action.value)
+      }
+      const value = action.value ?? toPercent(await $.store.get(THRESHOLD_KEY), USAGE_THRESHOLD)
+      return { text: tr(lang, 'panel.threshold', { value }) }
     }
     if (action !== 'open') {
       await update($, panelTabAtom, () => action)

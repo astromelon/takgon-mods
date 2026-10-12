@@ -2,6 +2,7 @@
  * M7 순수 로직: 트리거 판정, 파일명·시각 포맷, fork 프롬프트 조립. `$`를 쓰지 않는다.
  */
 import type { HandoffInfo, IssueItem, Lang, Pin, PrStatus, TaskItem } from '../../types'
+import { parsePercent, toPercent } from '../shared/settings'
 import { tr } from './messages'
 
 /** 자동 생성 임계치(컨텍스트 사용률 %). M6 경고(80%)보다 먼저 발동한다. */
@@ -23,12 +24,8 @@ export const shouldTrigger = (
   threshold: number = HANDOFF_THRESHOLD,
 ): boolean => !isFired && percent !== undefined && percent >= threshold
 
-/** 유효한 임계치인지: 1~99 정수. */
-const isThreshold = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 99
-
 /** 저장된 임계치. 없거나 범위 밖이면 기본 75. */
-export const toThreshold = (value: unknown): number => (isThreshold(value) ? value : HANDOFF_THRESHOLD)
+export const toThreshold = (value: unknown): number => toPercent(value, HANDOFF_THRESHOLD)
 
 const pad = (value: number): string => String(value).padStart(2, '0')
 
@@ -116,8 +113,8 @@ export const parseHandoffArgs = (args: string): HandoffAction => {
     if (value === undefined) {
       return { kind: 'threshold', value: null }
     }
-    const number = /^\d+$/.test(value) ? Number(value) : Number.NaN
-    return isThreshold(number) ? { kind: 'threshold', value: number } : 'usage'
+    const number = parsePercent(value)
+    return number === null ? 'usage' : { kind: 'threshold', value: number }
   }
   return (word === 'show' || word === 'load') && value === undefined ? word : 'usage'
 }

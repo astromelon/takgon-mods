@@ -3,10 +3,11 @@ import { createTranslator } from '../shared/i18n'
 /** M6 기본(ko) 사전. 키 목록의 단일 출처다. */
 const ko = {
   'panel.title': '작업 패널',
-  'panel.description': '작업 패널(핀·할 일·에이전트·사용량·인수인계) 열기/닫기',
+  'panel.description': '작업 패널(핀·할 일·에이전트·사용량·인수인계) 열기/닫기, 사용량 경고 임계치 설정',
   'panel.opened': '작업 패널을 열었습니다.',
   'panel.closed': '작업 패널을 닫았습니다.',
-  'panel.usage': '사용법: /panel [pinboard|tasks|agents|usage|handoff] | /panel close',
+  'panel.usage': '사용법: /panel [pinboard|tasks|agents|usage|handoff] | /panel close | /panel threshold [1-99]',
+  'panel.threshold': '사용량 경고 임계치: {value}% (컨텍스트·사용 한도)',
   'panel.off': 'panel 모듈이 꺼져 있습니다. /mods panel on 으로 켜세요.',
   'tab.pinboard': '핀',
   'tab.tasks': '할 일',
@@ -43,7 +44,8 @@ const en: Record<Key, string> = {
   'panel.description': 'Open/close the work panel (pins, tasks, agents, usage, handoff)',
   'panel.opened': 'Work panel opened.',
   'panel.closed': 'Work panel closed.',
-  'panel.usage': 'Usage: /panel [pinboard|tasks|agents|usage|handoff] | /panel close',
+  'panel.usage': 'Usage: /panel [pinboard|tasks|agents|usage|handoff] | /panel close | /panel threshold [1-99]',
+  'panel.threshold': 'Usage warning threshold: {value}% (context and usage limits)',
   'panel.off': 'The panel module is off. Turn it on with /mods panel on.',
   'tab.pinboard': 'Pins',
   'tab.tasks': 'Tasks',
