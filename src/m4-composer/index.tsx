@@ -107,14 +107,21 @@ const coachPrompt = async (
     return next(e)
   }
   const lang = await read($, langAtom)
-  const reply = await $.model.complete({
-    model: COACH_MODEL,
-    system: tr(lang, 'coach.system'),
-    prompt: tr(lang, 'coach.prompt', { text: e.text }),
-    maxTokens: 300,
-    timeoutMs: COACH_TIMEOUT_MS,
-  })
-  const verdict = reply.isAnswered ? parseCoachReply(reply.text) : null
+  // 판정 호출이 거부(차단된 모델 등)돼도 훅 실패로 번지지 않게 여기서 잡는다. 훅이 실패해 `.catch`가 답하면
+  // 같은 이벤트에 걸린 다른 모듈(M2·M3·M7의 context 첨부)까지 건너뛰어진다.
+  let verdict: ReturnType<typeof parseCoachReply> = null
+  try {
+    const reply = await $.model.complete({
+      model: COACH_MODEL,
+      system: tr(lang, 'coach.system'),
+      prompt: tr(lang, 'coach.prompt', { text: e.text }),
+      maxTokens: 300,
+      timeoutMs: COACH_TIMEOUT_MS,
+    })
+    verdict = reply.isAnswered ? parseCoachReply(reply.text) : null
+  } catch {
+    return next(e)
+  }
   if (verdict === null || !verdict.ambiguous || verdict.refined === '' || verdict.refined === e.text.trim()) {
     return next(e)
   }
