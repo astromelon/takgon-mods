@@ -152,6 +152,7 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
   마무리가 fork 시간만큼 늦어질 수 있다(hook 예산은 `$` 호출 대기를 세지 않는다).
 - **대응**: `$.clock.after(0, ...)`로 떼어 내고 한 번에 하나만 실행(`208de6f`).
 - **제안**: `ModelForkRequest`에 `timeoutMs`·`maxTokens` 추가.
+- **제출**: anthropics/claude-code#101446
 
 ## 7. 테스트 킷의 엔진 응답 규약이 문서에 없음
 
@@ -172,6 +173,7 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
     ```
 - **제안**: `claude-code/testing` 문서에 "엔진 자리 훅 작성법" 절과 기본 응답 helper(`mock.session()` 확장 등) 제공.
   특히 실제 엔진의 거부를 흉내 내는 방법(`{ deny }`)과 `throw`의 차이를 명시.
+- **제출**: anthropics/claude-code#101447
 
 ## 8. (외부) mermaid-cli SVG가 `Svg` 표시 한도를 넘음
 
