@@ -8,13 +8,18 @@
 ### Added
 - **M6**: `/panel threshold [1-99]`로 사용량 경고 임계치(컨텍스트·사용 한도, 기본 80%) 설정. 전역 store 키 `g/m6/threshold`. Usage 탭에 현재 임계치 표시.
 - **M6**: `/panel <탭>`(pinboard|tasks|agents|usage|handoff)으로 원하는 탭을 바로 열기, 탭 버튼 숫자 단축키 1~5. (`77ce7b0`)
-- **M7**: `/handoff threshold [1-99]`로 자동 인수인계 임계치(기본 75%) 설정. 전역 store 키 `g/m7/threshold`. (`ca24cab`)
+- **M7**: `/tk-handoff threshold [1-99]`로 자동 인수인계 임계치(기본 75%) 설정. 전역 store 키 `g/m7/threshold`. (`ca24cab`)
 - `docs/engine-constraints.md`: 실측한 엔진 제약 8건 정리, `docs/issues/`: claude-code 이슈 초안(4·5번).
 
 ### Changed
+- **M7**: 명령 이름을 `/handoff` → `/tk-handoff`로 변경. 사용자 스킬 `~/.claude/skills/handoff`와 이름이 겹쳐 등록이 거부됐다.
 - 퍼센트 임계치 해석(1~99 정수)을 `shared/settings`의 `toPercent`·`parsePercent`로 모아 M6·M7이 함께 쓴다.
 
 ### Fixed
+- **명령 등록 거부가 다른 모듈 초기화를 막던 문제**: M7의 `/handoff` 등록이 사용자 스킬과 겹쳐 거부되면, M7 `session.start` 훅이
+  실패해 `.catch`가 답하면서 같은 플러그인의 뒤쪽 초기화(M2 `/browse`, M3 `/edit`, M5 `/issue` 등록)까지 건너뛰어졌다(엔진 제약 3번).
+  모든 `$.command.register`를 실패해도 넘어가게 하고, 회귀 테스트(`tests/integration.test.tsx`)를 추가했다.
+- **M2**: playwright 미설치 안내가 전역 설치(`npm i -g`)를 권했지만 headless 스크립트는 전역 모듈을 찾지 못한다. 플러그인 폴더 설치로 안내.
 - `plugin.json`·`marketplace.json`에 author·description을 채워 validate 경고 제거. (`0cc5c6f`)
 
 ## [0.2.0] - 2026-10-12

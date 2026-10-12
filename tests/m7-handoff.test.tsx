@@ -37,7 +37,7 @@ describe('handoff 순수 로직', () => {
     expect(toThreshold('30')).toBe(75)
   })
 
-  test('/handoff threshold 인자 해석', () => {
+  test('/tk-handoff threshold 인자 해석', () => {
     expect(parseHandoffArgs('threshold')).toEqual({ kind: 'threshold', value: null })
     expect(parseHandoffArgs('threshold 30')).toEqual({ kind: 'threshold', value: 30 })
     expect(parseHandoffArgs('threshold 0')).toBe('usage')
@@ -173,19 +173,19 @@ describe('자동 트리거', () => {
     // 같은 턴에 다른 모듈(M5의 gh 확인)이 띄우는 toast는 제외하고 M7 것만 본다.
     expect(world.toasts.filter(text => !text.includes('gh'))).toEqual([])
 
-    const out = await $.command.run({ command: 'handoff', args: '', ...RUN })
+    const out = await $.command.run({ command: 'tk-handoff', args: '', ...RUN })
     expect(out.text).toContain('nothing-to-fork')
   })
 })
 
 describe('임계치 설정', () => {
-  test('/handoff threshold로 바꾼 임계치에서 자동 생성하고, 인자 없이 부르면 현재 값을 보여준다', async ($, on) => {
+  test('/tk-handoff threshold로 바꾼 임계치에서 자동 생성하고, 인자 없이 부르면 현재 값을 보여준다', async ($, on) => {
     const world = engine(on)
     const clock = mock.clock(on, { now: new Date(2026, 9, 12, 9, 5).getTime() })
     await $.session.start(START)
 
-    expect((await $.command.run({ command: 'handoff', args: 'threshold', ...RUN })).text).toContain('75%')
-    expect((await $.command.run({ command: 'handoff', args: 'threshold 20', ...RUN })).text).toContain('20%')
+    expect((await $.command.run({ command: 'tk-handoff', args: 'threshold', ...RUN })).text).toContain('75%')
+    expect((await $.command.run({ command: 'tk-handoff', args: 'threshold 20', ...RUN })).text).toContain('20%')
 
     world.percent.value = 25
     await $.turn.complete(TURN)
@@ -200,12 +200,12 @@ describe('수동 실행과 load', () => {
     mock.clock(on, { now: new Date(2026, 9, 12, 14, 30).getTime() })
     await $.session.start(START)
 
-    await $.command.run({ command: 'handoff', args: '', ...RUN })
-    const second = await $.command.run({ command: 'handoff', args: '', ...RUN })
+    await $.command.run({ command: 'tk-handoff', args: '', ...RUN })
+    const second = await $.command.run({ command: 'tk-handoff', args: '', ...RUN })
     expect(second.text).toContain('20261012-1430-2.md')
     expect(world.files.has(`${DIR}/handoff/20261012-1430.md`)).toBe(true)
 
-    const shown = await $.command.run({ command: 'handoff', args: 'show', ...RUN })
+    const shown = await $.command.run({ command: 'tk-handoff', args: 'show', ...RUN })
     expect(shown.text).toContain('20261012-1430-2.md')
     expect(shown.text).toContain('인수인계 본문')
   })
@@ -214,9 +214,9 @@ describe('수동 실행과 load', () => {
     const world = engine(on)
     mock.clock(on)
     await $.session.start(START)
-    await $.command.run({ command: 'handoff', args: '', ...RUN })
+    await $.command.run({ command: 'tk-handoff', args: '', ...RUN })
 
-    await $.command.run({ command: 'handoff', args: 'load', ...RUN })
+    await $.command.run({ command: 'tk-handoff', args: 'load', ...RUN })
     const prompt = { wait: false, origin: { kind: 'composer' } } as const
     await $.prompt.submit({ text: '이어서', ...prompt })
     await $.prompt.submit({ text: '다음', ...prompt })
@@ -232,10 +232,10 @@ describe('수동 실행과 load', () => {
     world.files.set(path, '이전 문서')
     mock.clock(on)
     await $.session.start(START)
-    expect(world.toasts.join('\n')).toContain('/handoff load')
+    expect(world.toasts.join('\n')).toContain('/tk-handoff load')
 
     world.files.delete(path)
-    const out = await $.command.run({ command: 'handoff', args: 'load', ...RUN })
+    const out = await $.command.run({ command: 'tk-handoff', args: 'load', ...RUN })
     expect(out.text).toContain(path)
   })
 })
@@ -249,6 +249,6 @@ describe('/clear 뒤 복원', () => {
 
     await $.prompt.submit({ text: '이어서 작업', wait: false, origin: { kind: 'composer' } })
 
-    expect(world.toasts.join('\n')).toContain('/handoff load')
+    expect(world.toasts.join('\n')).toContain('/tk-handoff load')
   })
 })

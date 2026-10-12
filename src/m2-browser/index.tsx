@@ -137,7 +137,7 @@ export const registerBrowser = (on: On): void => {
       name: 'browse',
       description: tr(lang, 'cmd.description'),
       argumentHint: '[url]',
-    })
+    }).catch(() => undefined)
     return next(e)
   })
 

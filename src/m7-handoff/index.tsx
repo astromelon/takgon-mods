@@ -91,7 +91,7 @@ const generate = async (
 const latest = async ($: EngineInterface): Promise<HandoffInfo | null> =>
   (await read($, handoffAtom)) ?? toHandoffInfo(await $.store.get(await latestKey($)))
 
-/** 최신본이 있으면 상태를 채우고 toast로 `/handoff load`를 안내한다. */
+/** 최신본이 있으면 상태를 채우고 toast로 `/tk-handoff load`를 안내한다. */
 const restore = async ($: EngineInterface): Promise<void> => {
   const { isOn: isEnabled, lang } = await settingsFromStore($)
   if (!isEnabled) {
@@ -126,14 +126,14 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 const start = async ($: EngineInterface): Promise<void> => {
   const { lang } = await settingsFromStore($)
   await $.command.register({
-    name: 'handoff',
+    name: 'tk-handoff',
     description: tr(lang, 'cmd.description'),
     argumentHint: '[show | load | threshold <1-99>]',
-  })
+  }).catch(() => undefined)
   await ensureRestored($)
 }
 
-/** `/handoff [show|load]` 처리. */
+/** `/tk-handoff [show|load]` 처리. */
 /** 자동 인수인계 임계치(컨텍스트 %) 전역 store 키. 없으면 75. */
 const THRESHOLD_KEY = globalKey('m7', 'threshold')
 
@@ -209,8 +209,8 @@ const takePending = async ($: EngineInterface): Promise<string | null> => {
 /**
  * M7 Auto-handoff.
  *
- * 컨텍스트 사용률이 75% 이상이 된 첫 답변 뒤(세션당 1회) 또는 `/handoff`로 `$.model.fork`에 인수인계 문서를 쓰게 해
- * `{project}/.claude/takgon/handoff/`에 저장한다. 새 세션에서는 최신본을 안내하고, `/handoff load`면 다음 프롬프트
+ * 컨텍스트 사용률이 75% 이상이 된 첫 답변 뒤(세션당 1회) 또는 `/tk-handoff`로 `$.model.fork`에 인수인계 문서를 쓰게 해
+ * `{project}/.claude/takgon/handoff/`에 저장한다. 새 세션에서는 최신본을 안내하고, `/tk-handoff load`면 다음 프롬프트
  * 1회에 문서를 context로 붙인다. 임계 판정은 `session.measure`(M6 전용) 대신 `turn.complete`에서 한다.
  */
 export const registerHandoff = (on: On): void => {
@@ -221,7 +221,7 @@ export const registerHandoff = (on: On): void => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'handoff' }, async ($, e) => {
+  on('command.run', { command: 'tk-handoff' }, async ($, e) => {
     await ensureRestored($)
     return { text: await runCommand($, e.args) }
   })

@@ -184,7 +184,7 @@ export const registerComposer = (on: On): void => {
       name: 'coach',
       description: tr(lang, 'coach.description'),
       argumentHint: '[on|off]',
-    })
+    }).catch(() => undefined)
     return next(e)
   })
 

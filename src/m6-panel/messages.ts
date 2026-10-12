@@ -33,7 +33,7 @@ const ko = {
   'usage.threshold': '경고 임계치: {percent}% (/panel threshold 로 변경)',
   'usage.contextToast': '컨텍스트 사용량이 {percent}%입니다. /compact 또는 인수인계를 고려하세요.',
   'usage.rateToast': '사용 한도 {kind}가 {percent}%에 도달했습니다.',
-  'handoff.empty': '아직 인수인계 문서가 없습니다.',
+  'handoff.empty': '아직 인수인계 문서가 없습니다. /tk-handoff 로 만들 수 있습니다.',
   'handoff.path': '파일: {path}',
   'more': '… 외 {count}개',
 } as const
@@ -72,7 +72,7 @@ const en: Record<Key, string> = {
   'usage.threshold': 'Warning threshold: {percent}% (change with /panel threshold)',
   'usage.contextToast': 'Context is {percent}% full. Consider /compact or a handoff.',
   'usage.rateToast': 'Usage limit {kind} reached {percent}%.',
-  'handoff.empty': 'No handoff yet.',
+  'handoff.empty': 'No handoff yet. Create one with /tk-handoff.',
   'handoff.path': 'File: {path}',
   'more': '… {count} more',
 }
