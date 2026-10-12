@@ -74,7 +74,7 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
 # 공통
 - 모듈별 on/off 설정을 두고, 기본값은 전부 on이다. 전역 키 `g/core/modules`에 저장하고 `/mods`로 토글한다.
   - 명령 체계 **[수정]**: `/mods` 하나로 통합한다 — `/mods`(목록·상태), `/mods <모듈> on|off`, `/mods lang en|ko`,
-    `/mods coach on|off`. 기능 명령(`/issue`, `/pin`, `/panel`, `/handoff`, `/browse`, `/edit`)은 별도.
+    기능 명령(`/coach`(`/issue`, `/pin`, `/panel`, `/handoff`, `/browse`, `/edit`)은 별도.
   - **내장 명령과 이름이 같으면 `$.command.register`가 거부한다.** 각 모듈 완료 시 validate 결과로 등록 성공을 확인하고,
     충돌하면 `tk-` 접두사(`/tk-mods` 등)로 바꾼다.
   - 꺼진 모듈은 hook에서 즉시 `next(e)`를 반환하고 타이머를 cancel한다.
@@ -136,7 +136,7 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
   - 모호하면 `$.ui.ask`로 [원문 그대로 / 다듬은 버전 / 취소]를 묻는다. 자동 치환은 금지한다.
     `$.ui.ask`는 dismiss·`-p` 실행에서 reject하므로 catch 시 원문 통과.
   - 가드 훅이므로 `.catch(($, e, next) => next(e))` 형태로(호출 전이면 원문 진행, 호출 후면 그 결과 재생) 실패 시 원문 통과를 보장한다.
-  - 토글: `/mods coach on|off`.
+  - 토글: `/coach on|off` **[수정]** (병렬 구현 중 core 수정을 피하려고 별도 명령으로 둠).
 - 표시할 항목이 없으면 `next(e)`를 반환해 band를 그리지 않는다.
 
 ## M6. Work Panel (Pane, 사용자가 `/panel`로 열 때만)
@@ -180,6 +180,18 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
 - desktop: `mmdc -o {hash}.svg` → `Svg`(131,072자 초과 시 원본 코드). terminal: `mmdc -o {hash}.png` → `Image`(kitty 계열만), 그 외는 원본 코드.
 - `mmdc` 미설치·실패 시 원본 코드를 그대로 표시하고 toast 1회.
 - 원본 보기 토글과 SVG/PNG 저장(경로 복사)을 지원한다. 메시지 본문의 나머지는 엔진 렌더를 유지한다.
+
+# 이벤트 배정 **[추가: validate 확인]**
+matcher 없는 등록은 이벤트마다 플러그인 전체에 하나만 허용된다. 같은 matcher는 여러 모듈이 써도 된다.
+| 이벤트 | 형태 | 모듈 |
+|---|---|---|
+| `session.start` | 없음(core) / `{ isInteractive: true }` | core / 각 모듈 |
+| `classic.SessionStart` | 없음(core) / `{ source: 'clear' }`·`{ source: 'resume' }` | core / 각 모듈 |
+| `turn.complete` | `{ reason: 'answer' }` | M4, M5, M7, M8 |
+| `prompt.submit` | `{ origin: { kind: 'composer' } }` | M4, M7, M2, M3 (등록 순서대로) |
+| `tool.call` | `{ tool }` | M2(Bash), M3(Edit, Write) |
+| `session.measure`, `classic.SubagentStart/Stop` | 없음 | M6 |
+같은 이벤트를 공유하는 훅은 자기 실패가 다른 모듈로 번지지 않게 외부 호출을 직접 try/catch한다(`.catch`가 답하면 뒤 모듈이 건너뛰어짐).
 
 # 개발 및 검증
 - 개발: `claude --plugin-dir C:\dev\takgon-mods` (저장 시 핫 리로드, `claude --debug`로 거부 사유 확인)
