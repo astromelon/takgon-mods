@@ -3,13 +3,15 @@
 이 프로젝트의 주요 변경 사항을 기록한다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따른다.
 
-## [Unreleased]
+## [0.3.0] - 2026-10-12
+
+임계치 설정과 패널 사용성을 보강하고, 실제 세션에서 명령 등록 거부가 초기화를 연쇄로 막던 문제를 고친다.
 
 ### Added
 - **M6**: `/panel threshold [1-99]`로 사용량 경고 임계치(컨텍스트·사용 한도, 기본 80%) 설정. 전역 store 키 `g/m6/threshold`. Usage 탭에 현재 임계치 표시.
 - **M6**: `/panel <탭>`(pinboard|tasks|agents|usage|handoff)으로 원하는 탭을 바로 열기, 탭 버튼 숫자 단축키 1~5. (`77ce7b0`)
 - **M7**: `/tk-handoff threshold [1-99]`로 자동 인수인계 임계치(기본 75%) 설정. 전역 store 키 `g/m7/threshold`. (`ca24cab`)
-- `docs/engine-constraints.md`: 실측한 엔진 제약 8건 정리, `docs/issues/`: claude-code 이슈 초안(4·5번).
+- `docs/engine-constraints.md`: 실측한 엔진 제약 9건 정리(9번: 스킬 이름 충돌로 인한 초기화 연쇄 실패), `docs/issues/`: claude-code 이슈 초안(4·5번).
 
 ### Changed
 - **M7**: 명령 이름을 `/handoff` → `/tk-handoff`로 변경. 사용자 스킬 `~/.claude/skills/handoff`와 이름이 겹쳐 등록이 거부됐다.
