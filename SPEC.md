@@ -186,11 +186,18 @@ matcher 없는 등록은 이벤트마다 플러그인 전체에 하나만 허용
 | 이벤트 | 형태 | 모듈 |
 |---|---|---|
 | `session.start` | 없음(core) / `{ isInteractive: true }` | core / 각 모듈 |
-| `classic.SessionStart` | 없음(core) / `{ source: 'clear' }`·`{ source: 'resume' }` | core / 각 모듈 |
+| `prompt.submit`·`command.run` | 없음(core, 복원 확인 후 `next`) | core |
 | `turn.complete` | `{ reason: 'answer' }` | M4, M5, M7, M8 |
 | `prompt.submit` | `{ origin: { kind: 'composer' } }` | M4, M7, M2, M3 (등록 순서대로) |
 | `tool.call` | `{ tool }` | M2(Bash), M3(Edit, Write) |
-| `session.measure`, `classic.SubagentStart/Stop` | 없음 | M6 |
+| `session.measure`, `agent.spawn` | 없음 | M6 |
+**`classic.*`는 쓰지 않는다 [수정: 실측]**: 내장 보안 플러그인(`cc-plugin-sec-default`, 최상위 tier)이 `next.to`로 user tier를
+건너뛰어 user 플러그인의 `classic.SessionStart`·`SubagentStart`·`SubagentStop`이 모두 `bypassed`된다(debug 로그 확인).
+**`/clear`·`/resume` 복원 [수정: 실측]**: `/clear` 뒤에는 `$.state`가 전부 비고(세션 id 변경) `session.start`도 오지 않는다.
+등록한 명령과 `$.clock` 타이머는 유지된다. 그래서 `restored` state에 복원한 모듈을 기록하고, 비어 있으면 각 모듈이 자기
+훅(프롬프트·명령·턴 완료·측정)에 처음 들어올 때 store에서 다시 채운다. 복원 실패는 훅 안에서 삼킨다.
+**무거운 작업은 `turn.complete`를 붙잡지 않는다**: `$.model.fork`는 시간 상한을 줄 수 없으므로 M4·M7은 `$.clock.after(0, ...)`로
+떼어 내고 한 번에 하나만 돌린다.
 같은 이벤트를 공유하는 훅은 자기 실패가 다른 모듈로 번지지 않게 외부 호출을 직접 try/catch한다(`.catch`가 답하면 뒤 모듈이 건너뛰어짐).
 
 # 개발 및 검증

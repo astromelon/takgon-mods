@@ -108,6 +108,12 @@ declare module 'claude-code' {
       modules: ModuleFlags
       projectId: string
       notified: string[]
+      /**
+       * 이번 세션에 store에서 복원을 마친 모듈 표시('core', 'm4' …). `/clear`·`/resume`은 state를 비우고
+       * `session.start`도 다시 오지 않으므로(classic.SessionStart는 user 플러그인에 전달되지 않음), 비어 있으면
+       * 다음 프롬프트·명령에서 각 모듈이 다시 복원한다.
+       */
+      restored: string[]
 
       // M5 integrations
       pr: PrStatus | null

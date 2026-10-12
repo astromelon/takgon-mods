@@ -16,8 +16,8 @@ import {
   parsePanelArgs,
   parsePinArgs,
   removePin,
+  applyAgentStatuses,
   startAgent,
-  stopAgent,
   toPins,
   toSnapshot,
   toTasks,
@@ -38,6 +38,7 @@ const tasksAtom = atom({ plugin: 'takgon-mods', key: 'tasks' } as const, [])
 const agentsAtom = atom({ plugin: 'takgon-mods', key: 'agents' } as const, [])
 const usageAtom = atom({ plugin: 'takgon-mods', key: 'usage' } as const, null)
 const handoffAtom = atom({ plugin: 'takgon-mods', key: 'handoff' } as const, null)
+const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
 
 const isOn = async ($: EngineInterface): Promise<boolean> => (await read($, modulesAtom)).panel
 
@@ -54,18 +55,48 @@ const pinsKey = (pid: string): string => projectKey(pid, 'm6', 'pins')
 /** M4와 같은 키. */
 const tasksKey = (pid: string): string => projectKey(pid, 'm4', 'tasks')
 
-/** 세션 시작·복원: 명령 등록, 핀·할 일을 store에서 다시 읽고 세션 범위 상태(에이전트·사용량)를 비운다. */
-const init = async ($: EngineInterface): Promise<void> => {
-  const lang = await langOf($)
-  await $.command.register({ name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close]' })
-  await $.command.register({ name: 'pin', description: tr(lang, 'pin.description'), argumentHint: '[<text>|list]' })
+/** 핀·할 일을 store에서 다시 읽는다. 에이전트·사용량은 세션 범위라 복원하지 않는다. */
+const restore = async ($: EngineInterface): Promise<void> => {
   const pid = await pidOf($)
   const pins = toPins(await $.store.get(pinsKey(pid)))
   const tasks = toTasks(await $.store.get(tasksKey(pid)))
   await update($, pinsAtom, () => pins)
   await update($, tasksAtom, () => tasks)
-  await update($, agentsAtom, () => [])
-  await update($, usageAtom, () => null)
+}
+
+/**
+ * 이번 세션에 아직 복원하지 않았으면 store에서 불러온다. `/clear`·`/resume`은 state(복원 표시 포함)를 비우고
+ * `session.start`를 다시 보내지 않으므로, 이 모듈의 훅에 처음 들어올 때 다시 채운다. 실패는 삼키고 다음에 재시도한다.
+ */
+const ensureRestored = async ($: EngineInterface): Promise<void> => {
+  if ((await read($, restoredAtom)).includes('m6')) {
+    return
+  }
+  await update($, restoredAtom, list => (list.includes('m6') ? list : [...list, 'm6']))
+  try {
+    await restore($)
+  } catch {
+    await update($, restoredAtom, list => list.filter(one => one !== 'm6'))
+  }
+}
+
+/** 세션 시작: 명령 등록과 복원. */
+const init = async ($: EngineInterface): Promise<void> => {
+  const lang = await langOf($)
+  await $.command.register({ name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close]' })
+  await $.command.register({ name: 'pin', description: tr(lang, 'pin.description'), argumentHint: '[<text>|list]' })
+  await ensureRestored($)
+}
+
+/** `$.agent.list()`로 서브에이전트 상태(완료·실패 포함)를 갱신한다. 목록을 못 읽으면 그대로 둔다. */
+const refreshAgents = async ($: EngineInterface): Promise<void> => {
+  try {
+    const listing = (await $.agent.list()).map(one => ({ id: one.id, type: one.type, status: one.status }))
+    const now = await $.clock.now()
+    await update($, agentsAtom, list => applyAgentStatuses(list, listing, now))
+  } catch {
+    // 상태 갱신은 부가 정보라 실패해도 넘어간다.
+  }
 }
 
 const savePins = async ($: EngineInterface, next: Pin[]): Promise<void> => {
@@ -143,7 +174,7 @@ const agentLine = (lang: Lang, run: AgentRun): string => {
 /**
  * M6 Work Panel: `/panel`로 여는 pane(핀·할 일·에이전트·사용량·인수인계 탭)과 `/pin` 명령.
  *
- * 사용량 임계치는 `session.measure`(턴마다 push)에서 판정하고, 서브에이전트 실행은 `classic.SubagentStart/Stop`으로
+ * 사용량 임계치는 `session.measure`(턴마다 push)에서 판정하고, 서브에이전트 실행은 `agent.spawn`과 `$.agent.list()`로
  * 세션 범위에만 기록한다. 할 일은 M4와 같은 `tasks` atom·store 키를 공유한다.
  */
 export const registerPanel = (on: On): void => {
@@ -152,18 +183,15 @@ export const registerPanel = (on: On): void => {
     return next(e)
   })
 
-  on('classic.SessionStart', { source: 'clear' }, async ($, e, next) => {
-    await init($)
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  on('classic.SessionStart', { source: 'resume' }, async ($, e, next) => {
-    await init($)
+  // M7 인수인계가 핀을 읽으므로, /clear 뒤 첫 프롬프트에서 미리 복원해 둔다.
+  on('prompt.submit', { origin: { kind: 'composer' } }, async ($, e, next) => {
+    await ensureRestored($)
     return next(e)
   }).catch(($, e, next) => next(e))
 
 
   on('command.run', { command: 'panel' }, async ($, e) => {
+    await ensureRestored($)
     const lang = await langOf($)
     if (!(await isOn($))) {
       return { text: tr(lang, 'panel.off') }
@@ -184,11 +212,13 @@ export const registerPanel = (on: On): void => {
         // 사용량을 못 읽어도 패널은 연다.
       }
     }
+    await refreshAgents($)
     await $.ui.open({ id: 'takgon-panel', title: tr(lang, 'panel.title') })
     return { text: tr(lang, 'panel.opened') }
   })
 
   on('command.run', { command: 'pin' }, async ($, e) => {
+    await ensureRestored($)
     const lang = await langOf($)
     if (!(await isOn($))) {
       return { text: tr(lang, 'panel.off') }
@@ -214,25 +244,22 @@ export const registerPanel = (on: On): void => {
     return { text: tr(lang, 'pin.added', { text: fit(text, 80) }) }
   })
 
-  on('classic.SubagentStart', async ($, e, next) => {
-    if (await isOn($)) {
+  // classic.SubagentStart/Stop은 내장 보안 플러그인이 user 플러그인을 건너뛰게 해 전달되지 않는다.
+  // 시작은 agent.spawn에서, 완료·실패는 $.agent.list()로 갱신한다.
+  on('agent.spawn', async ($, e, next) => {
+    const result = await next(e)
+    if (result.agentId !== undefined && (await isOn($))) {
       const now = await $.clock.now()
-      await update($, agentsAtom, list => startAgent(list, e.agent_id, e.agent_type, now))
+      await update($, agentsAtom, list => startAgent(list, result.agentId ?? '', e.subagentType, now))
     }
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  on('classic.SubagentStop', async ($, e, next) => {
-    if (await isOn($)) {
-      const now = await $.clock.now()
-      await update($, agentsAtom, list => stopAgent(list, e.agent_id, e.agent_type, now))
-    }
-    return next(e)
+    return result
   }).catch(($, e, next) => next(e))
 
   on('session.measure', async ($, e, next) => {
     if (await isOn($)) {
+      await ensureRestored($)
       await measure($, e)
+      await refreshAgents($)
     }
     return next(e)
   }).catch(($, e, next) => next(e))

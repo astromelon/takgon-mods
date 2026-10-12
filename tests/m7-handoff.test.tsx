@@ -112,15 +112,20 @@ const engine = (on: On, store: Record<string, unknown> = {}): World => {
 describe('자동 트리거', () => {
   test('75% 미만이면 만들지 않고, 이상이면 세션당 1회만 만든다', async ($, on) => {
     const world = engine(on)
-    mock.clock(on, { now: new Date(2026, 9, 12, 9, 5).getTime() })
+    const clock = mock.clock(on, { now: new Date(2026, 9, 12, 9, 5).getTime() })
     await $.session.start(START)
 
     await $.turn.complete(TURN)
+    await clock.settle()
     expect(world.forks).toHaveLength(0)
 
     world.percent.value = 80
     await $.turn.complete(TURN)
+    // 생성은 타이머로 떼어 내므로 turn.complete는 fork를 기다리지 않는다.
+    expect(world.forks).toHaveLength(0)
+    await clock.settle()
     await $.turn.complete(TURN)
+    await clock.settle()
     expect(world.forks).toHaveLength(1)
     expect(world.files.get(`${DIR}/handoff/20261012-0905.md`)).toContain('인수인계 본문')
     expect(world.files.get(`${DIR}/.gitignore`)).toBe('*\n')
@@ -128,21 +133,24 @@ describe('자동 트리거', () => {
 
   test('모듈이 꺼져 있으면 아무것도 하지 않는다', async ($, on) => {
     const world = engine(on, { 'g/core/modules': { handoff: false } })
-    mock.clock(on)
+    const clock = mock.clock(on)
     await $.session.start(START)
     world.percent.value = 90
     await $.turn.complete(TURN)
+    await clock.settle()
     expect(world.forks).toHaveLength(0)
   })
 
   test('fork 실패는 자동이면 조용히, 수동이면 안내한다', async ($, on) => {
     const world = engine(on)
     world.isForkOk.value = false
-    mock.clock(on)
+    const clock = mock.clock(on)
     await $.session.start(START)
     world.percent.value = 90
     await $.turn.complete(TURN)
-    expect(world.toasts).toEqual([])
+    await clock.settle()
+    // 같은 턴에 다른 모듈(M5의 gh 확인)이 띄우는 toast는 제외하고 M7 것만 본다.
+    expect(world.toasts.filter(text => !text.includes('gh'))).toEqual([])
 
     const out = await $.command.run({ command: 'handoff', args: '', ...RUN })
     expect(out.text).toContain('nothing-to-fork')
@@ -192,5 +200,18 @@ describe('수동 실행과 load', () => {
     world.files.delete(path)
     const out = await $.command.run({ command: 'handoff', args: 'load', ...RUN })
     expect(out.text).toContain(path)
+  })
+})
+
+describe('/clear 뒤 복원', () => {
+  test('state가 비어 있으면(session.start 없음) 첫 프롬프트에서 최신본을 다시 안내한다', async ($, on) => {
+    const path = `${DIR}/handoff/20261011-1800.md`
+    const world = engine(on, { 'p/b1a59c26/m7/latest': { path, summary: '요약', createdAt: 1 } })
+    world.files.set(path, '이전 문서')
+    mock.clock(on)
+
+    await $.prompt.submit({ text: '이어서 작업', wait: false, origin: { kind: 'composer' } })
+
+    expect(world.toasts.join('\n')).toContain('/handoff load')
   })
 })

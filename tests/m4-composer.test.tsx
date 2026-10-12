@@ -155,7 +155,6 @@ const engine = (on: On, store: Record<string, unknown> = {}, isForkOk = true): W
     return { value: { isAnswered: true, text, usage: ZERO } }
   })
   on('turn.complete', ($, e) => ({ text: e.answer }))
-  on('classic.SessionStart', () => ({}))
   on('prompt.submit', ($, e) => {
     world.submitted.push({ text: e.text, origin: e.origin.kind })
     return { text: e.text }
@@ -245,11 +244,23 @@ describe('AbovePrompt band', () => {
     await ui.press({ key: 'check-t4' })
     expect(await ui.find({ key: 'task-t4' })).toBeUndefined()
     expect(await ui.find({ key: 'task-t1' })).toBeDefined()
+  })
+})
 
-    // 새 세션에서 store로부터 복원해도 완료 상태가 유지된다.
-    await $.classic.SessionStart({ source: 'resume' })
-    const again = await $.ui.mount({ plugin: 'takgon-mods', surface: 'desktop', component: 'AbovePrompt', props: BAND })
-    expect(await again.find({ key: 'task-t4' })).toBeUndefined()
+describe('/clear 뒤 복원', () => {
+  test('state가 비어 있으면(session.start 없음) 첫 명령에서 store의 task를 복원한다', async ($, on) => {
+    engine(on, { [TASKS_KEY]: [{ id: 'k1', text: '저장된 할 일', kind: 'checkbox', isDone: false, createdAt: 1 }] })
+    mock.clock(on)
+
+    await $.command.run({
+      command: 'coach',
+      args: '',
+      origin: { kind: 'composer' },
+      presentation: { isFullscreen: false, columns: 120 },
+    })
+
+    const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    expect((await ui.find({ key: 'task-k1' }))?.text).toContain('저장된 할 일')
   })
 })
 
@@ -261,19 +272,25 @@ describe('Next-steps', () => {
 
     world.messages = [{ role: 'user', text: 'hi', toolUses: [] }, { role: 'assistant', text: 'hello', toolUses: [] }]
     await $.turn.complete(TURN)
+    await clock.settle()
     expect(world.forks).toHaveLength(0)
 
     world.messages = TOOL_TURN
     await $.turn.complete(TURN)
+    // fork는 타이머로 떼어 내므로 turn.complete는 fork를 기다리지 않고 돌아온다.
+    expect(world.forks).toHaveLength(0)
+    await clock.settle()
     expect(world.forks).toHaveLength(1)
     expect(world.forks[0]).toContain('Run tests')
 
     await clock.advance(60_000)
     await $.turn.complete(TURN)
+    await clock.settle()
     expect(world.forks).toHaveLength(1)
 
     await clock.advance(60_000)
     await $.turn.complete(TURN)
+    await clock.settle()
     expect(world.forks).toHaveLength(2)
 
     const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
@@ -293,10 +310,11 @@ describe('Next-steps', () => {
 
   test('fork 실패면 task를 추가하지 않는다', async ($, on) => {
     const world = engine(on, {}, false)
-    mock.clock(on)
+    const clock = mock.clock(on)
     await $.session.start(START)
     world.messages = TOOL_TURN
     expect((await $.turn.complete(TURN)).text).toBe('ok')
+    await clock.settle()
     const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
     expect(await ui.find({ text: 'engine-band' })).toBeDefined()
   })
