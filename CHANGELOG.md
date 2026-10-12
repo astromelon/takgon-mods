@@ -3,6 +3,11 @@
 이 프로젝트의 주요 변경 사항을 기록한다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따른다.
 
+## [Unreleased]
+
+### Added
+- `tools/e2e` 시나리오 `linear_issue`: 실제 Linear API로 `/issue` 검색·연결·중복 연결·해제 확인. 하네스가 새 셸을 열지 않아도 사용자 환경변수를 레지스트리에서 읽어 하위 세션에 넘긴다(`user_env`).
+
 ## [0.4.0] - 2026-10-12
 
 `/mods`에 명령 등록 상태를 보여 주고, CI와 실제 세션 E2E 하네스를 갖추고, 실측한 엔진 제약을 업스트림 이슈로 올린다.

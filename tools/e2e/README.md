@@ -32,6 +32,7 @@ python -m venv .venv
 | `clear_restore` | – | `/clear` 뒤 모듈 on/off·핀·할 일 복원 |
 | `mods_status` | – | 프로젝트 스킬 `browse`와 이름 충돌 → 거부 toast 1회, `/mods`에 ✓/✗ |
 | `browse` | – | `/browse <url>` 상태·제목·콘솔 에러·스크린샷 |
+| `linear_issue` | – | `/issue` 검색·연결·중복 연결·해제(실제 Linear API, `LINEAR_API_KEY` 필요, 이슈 상태는 바꾸지 않음) |
 | `probe_classic` | – | 엔진 제약 1번 재현(`probes/classic-probe`): user 플러그인의 `classic.*` 훅 bypass |
 | `probe_catch` | – | 엔진 제약 3번 재현(`probes/catch-probe*`) |
 | `probe_clear_state` | – | 엔진 제약 2번 재현(`probes/state-probe`) |
@@ -52,3 +53,6 @@ python -m venv .venv
 - **store**: 시나리오가 바꾸는 전역 키(`g/core/modules`, `g/m6/threshold`, `g/m7/threshold`)는 끝나면 원래 값으로 되돌리고,
   테스트 프로젝트 키(`p/{pid}/…`)는 지운다. 시나리오가 도는 동안 다른 Claude Code 세션에서 takgon-mods 설정을 바꾸지 않는다.
 - 판정은 화면 문자열(공백 무시)과 debug 로그 기준이다. Claude Code UI 문구가 바뀌면 판정 문자열을 함께 고친다.
+- 터미널은 화면을 다시 그릴 때 이미 같은 글자가 있던 칸을 보내지 않아, 출력 기록에서 일부 줄이 빠질 수 있다.
+  판정에는 새로 나타나는 고유한 문자열이나 store 상태를 쓴다.
+- 사용자 환경변수(예: `LINEAR_API_KEY`)를 설정한 뒤 셸을 새로 열지 않았으면 `harness.user_env()`가 레지스트리에서 읽어 하위 세션에 넘긴다(값은 출력하지 않는다).

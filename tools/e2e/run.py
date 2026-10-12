@@ -24,6 +24,7 @@ SCENARIOS = [
     "clear_restore",
     "mods_status",
     "browse",
+    "linear_issue",
     "probe_classic",
     "probe_catch",
     "probe_clear_state",
