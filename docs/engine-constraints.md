@@ -11,7 +11,7 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
 
 | # | 제목 | 분류 | 근거 | 심각도 | takgon-mods 대응 |
 |---|---|---|---|---|---|
-| 1 | user 플러그인의 `classic.*` 훅이 전부 건너뛰어짐 | 엔진 동작·문서 공백 | 실측 | 높음 | 훅 제거, 대체 이벤트 사용 |
+| 1 | user 플러그인의 `classic.*` 훅이 전부 건너뛰어짐 | 엔진 동작·문서 공백 | 실측 | 높음 | 훅 제거, 대체 이벤트 사용 (CI 러너에서는 재현 안 됨, 아래 참고) |
 | 2 | `/clear` 뒤 `$.state` 전체 초기화, 재초기화 이벤트 없음 | 엔진 동작·API 공백 | 실측 | 높음 | `restored` 표시 + 지연 복원 |
 | 3 | 훅 실패 시 `.catch`의 `next(e)`가 같은 플러그인의 뒤쪽 훅을 건너뜀 | 엔진 동작·문서 공백 | 실측 | 중간 | 훅 안에서 예외 처리 |
 | 4 | matcher 없는 등록은 이벤트마다 플러그인 전체에서 1개 | 문서 공백 | validate | 중간 | 이벤트 배정표, 공유 matcher |
@@ -44,6 +44,15 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
 - **제안**: (a) 의도된 정책이면 reference와 validate 경고에 "user tier에는 classic 이벤트가 전달되지 않음"을 명시.
   (b) 테스트 킷도 같은 정책을 재현해 테스트와 실제 동작을 일치.
 - **감시**: `tools/e2e` 시나리오 `probe_classic`(`probes/classic-probe`). 엔진이 바뀌어 훅이 실행되기 시작하면 실패한다.
+- **CI 러너에서의 관찰**: 이 bypass는 GitHub Actions `windows-latest` 러너에서 재현되지 않았다(실측).
+  - 같은 Claude Code 2.1.296인데, 로컬(Windows 11)의 `python tools/e2e/run.py probe_classic`은 통과한다. debug 로그에
+    `classic.SessionStart bypassed by cc-plugin-sec-default (tier user); beneath runs`가 찍히고 훅 본문은 실행되지 않는다.
+  - CI 러너(2.1.296 설치)에서는 같은 probe가 실패했다(run 38232223810, 38232555413). bypass 로그가 없었고(`[]`)
+    classic.SessionStart 훅 본문이 실행된 것으로 판정됐다. `probe_catch`·`probe_clear_state`는 CI에서 통과한다.
+  - 원인은 확인하지 못했다. 추정: CI 러너에는 user 플러그인을 건너뛰게 하는 내장 보안 플러그인 `cc-plugin-sec-default`가 없거나
+    로드되지 않았을 가능성(추정, 미확인). 로컬에서 CI 로그를 직접 확인하지는 못했다.
+  - 대응: CI(`.github/workflows/ci.yml`)의 e2e probe 단계에서 `probe_classic`을 제외했다(`132dfd6`).
+    제약 1번 감시는 로컬에서 수동으로 돌린다. 따라서 이 제약은 로컬 환경에서만 실측으로 확인된 것이며, CI 결과로는 감시되지 않는다.
 
 ## 2. `/clear` 뒤 `$.state` 전체 초기화, 재초기화 이벤트 없음
 
