@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>Takgon Dev Page</title></head>
+<body>
+  <h1 class="hero">로컬 dev 서버 테스트</h1>
+  <script>
+    console.error('dev-console-error-1: 설정 파일을 읽지 못했습니다')
+    setTimeout(() => { throw new Error('dev-uncaught-boom') }, 100)
+  </script>
+</body>
+</html>

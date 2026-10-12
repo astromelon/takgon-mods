@@ -1,0 +1,1 @@
+{ "name": "state-probe", "version": "0.0.1", "description": "probe", "types": "./types/index.d.ts" }
