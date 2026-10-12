@@ -10,6 +10,12 @@ import {
   parsePrView,
   shouldRefresh,
 } from '../src/m5-integrations/github'
+import {
+  approvalDecision,
+  classifyGlabExit,
+  detectForge,
+  parseMrView,
+} from '../src/m5-integrations/gitlab'
 import { findState, parseIssue, parseSearch, searchBody } from '../src/m5-integrations/linear'
 import { tr } from '../src/m5-integrations/messages'
 
@@ -75,6 +81,117 @@ describe('GitHub 해석(순수)', () => {
   })
 })
 
+describe('GitLab 해석(순수)', () => {
+  test('원격 주소로 forge를 고른다', () => {
+    expect(detectForge('https://github.com/o/r.git')).toBe('github')
+    expect(detectForge('git@github.com:o/r.git')).toBe('github')
+    expect(detectForge('http://192.168.0.135:8030/nred/aichatbot.git')).toBe('gitlab')
+    expect(detectForge('git@gitlab.com:g/p.git')).toBe('gitlab')
+    expect(detectForge('')).toBeNull()
+  })
+
+  test('glab mr view JSON → MR 상태(파이프라인·변경 요청)', () => {
+    const mr = (extra: Record<string, unknown>) =>
+      parseMrView(JSON.stringify({ iid: 12, web_url: 'http://gl/g/p/-/merge_requests/12', ...extra }))
+    expect(mr({ head_pipeline: { status: 'success' } })).toEqual({
+      number: 12,
+      url: 'http://gl/g/p/-/merge_requests/12',
+      reviewDecision: '',
+      checks: 'success',
+      provider: 'gitlab',
+    })
+    expect(mr({ head_pipeline: { status: 'running' } })?.checks).toBe('pending')
+    expect(mr({ pipeline: { status: 'failed' } })?.checks).toBe('failure')
+    expect(mr({ head_pipeline: null })?.checks).toBe('none')
+    expect(mr({ detailed_merge_status: 'requested_changes' })?.reviewDecision).toBe('CHANGES_REQUESTED')
+    expect(mr({ detailed_merge_status: 'not_approved' })?.reviewDecision).toBe('REVIEW_REQUIRED')
+    expect(parseMrView('{}')).toBeNull()
+    expect(parseMrView('oops')).toBeNull()
+  })
+
+  test('승인 API 결과로 리뷰 상태를 정하고, 변경 요청이 우선한다', () => {
+    expect(approvalDecision('', JSON.stringify({ approved: true, approved_by: [{ user: {} }] }))).toBe('APPROVED')
+    expect(approvalDecision('', JSON.stringify({ approved: false, approvals_left: 1 }))).toBe('REVIEW_REQUIRED')
+    expect(approvalDecision('', JSON.stringify({ approved: true, approved_by: [] }))).toBe('')
+    expect(approvalDecision('CHANGES_REQUESTED', JSON.stringify({ approved: true, approved_by: [{}] }))).toBe(
+      'CHANGES_REQUESTED',
+    )
+    expect(approvalDecision('REVIEW_REQUIRED', 'not json')).toBe('REVIEW_REQUIRED')
+  })
+
+  test('glab 실패 분류', () => {
+    expect(classifyGlabExit(1, 'ERROR: 401 Unauthorized. To authenticate, run glab auth login')).toBe('glab-auth')
+    expect(classifyGlabExit(1, 'no open merge request available for "main"')).toBe('no-pr')
+  })
+})
+
+describe('GitLab MR 폴링', () => {
+  test('GitLab 원격이면 glab으로 MR·승인을 읽어 band에 MR 배지를 띄운다', async ($, on) => {
+    const calls: string[] = []
+    engine(
+      on,
+      argv => {
+        calls.push(argv.slice(0, 3).join(' '))
+        if (argv[1] === 'api') {
+          return { exitCode: 0, stdout: JSON.stringify({ approved: true, approved_by: [{ user: { username: 'a' } }] }), stderr: '' }
+        }
+        const view = { iid: 12, web_url: 'http://gl/nred/aichatbot/-/merge_requests/12', head_pipeline: { status: 'success' } }
+        return { exitCode: 0, stdout: JSON.stringify(view), stderr: '' }
+      },
+      [],
+      'http://192.168.0.135:8030/nred/aichatbot.git',
+    )
+    const clock = mock.clock(on)
+    mock.store(on)
+    mock.env(on, {})
+
+    await $.session.start(START)
+    await clock.settle()
+
+    expect(calls).toEqual(['glab mr view', 'glab api projects/:id/merge_requests/12/approvals'])
+    const band = await $.ui.mount({
+      plugin: 'takgon-mods',
+      surface: 'terminal',
+      component: 'AbovePrompt',
+      props: {
+        hasSurvey: false,
+        isWorking: false,
+        maxRows: 10,
+        bodyColumns: 100,
+        scroll: { offset: 0, bodyRows: 9 },
+        view: {},
+      },
+    })
+    const badge = (await band.find({ key: 'pr-badge' }))?.text ?? ''
+    expect(badge).toContain('MR !12')
+    expect(badge).toContain('승인됨')
+    expect(badge).toContain('체크 통과')
+  })
+
+  test('glab 미설치·미인증은 원인별 toast 1회', async ($, on) => {
+    const toasts: string[] = []
+    let mode: 'missing' | 'auth' = 'missing'
+    engine(
+      on,
+      () => (mode === 'missing' ? undefined : { exitCode: 1, stdout: '', stderr: '401 Unauthorized. glab auth login' }),
+      toasts,
+      'http://192.168.0.135:8030/nred/aichatbot.git',
+    )
+    const clock = mock.clock(on)
+    mock.store(on)
+    mock.env(on, {})
+
+    await $.session.start(START)
+    await clock.settle()
+    await clock.advance(60_000)
+    mode = 'auth'
+    await clock.advance(60_000)
+    await clock.advance(60_000)
+
+    expect(toasts).toEqual([tr('ko', 'toast.glabMissing'), tr('ko', 'toast.glabAuth')])
+  })
+})
+
 describe('Linear·명령 해석(순수)', () => {
   test('/issue 인자 해석', () => {
     expect(parseIssueArgs('')).toEqual({ kind: 'list' })
@@ -123,8 +240,9 @@ type Run = { exitCode: number; stdout: string; stderr: string }
 /** 엔진 자리: 세션 시작, 프로젝트 루트, toast 기록, gh 실행 결과. `gh`가 undefined면 실행 실패(미설치). */
 const engine = (
   on: On,
-  gh: () => Run | undefined,
+  gh: (argv: readonly string[]) => Run | undefined,
   toasts: string[] = [],
+  remote = 'https://github.com/o/r.git',
 ): { ghCalls: () => number } => {
   let calls = 0
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -133,9 +251,14 @@ const engine = (
     toasts.push(e.text)
     return { value: undefined }
   })
-  on('process.run', () => {
+  on('process.run', ($, e) => {
+    // forge 판별용 `git remote get-url origin`은 원격 주소로 답하고 호출 수에서 뺀다.
+    if (e.argv[0] === 'git') {
+      return { value: { exitCode: 0, stdout: `${remote}
+`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     calls += 1
-    const result = gh()
+    const result = gh(e.argv)
     if (result === undefined) {
       throw new Error('spawn gh ENOENT')
     }
