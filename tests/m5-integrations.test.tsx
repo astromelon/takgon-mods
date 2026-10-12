@@ -297,7 +297,6 @@ describe('/issue 명령', () => {
     engine(on, () => NO_PR)
     linear(on)
     memStore(on, sets)
-    on('classic.SessionStart', () => ({}))
     mock.env(on, { LINEAR_API_KEY: 'lin_api_SECRET' })
     await $.session.start(START)
     await clock.settle()
@@ -316,7 +315,6 @@ describe('/issue 명령', () => {
     expect(saved).toHaveLength(1)
     expect(JSON.stringify(saved)).not.toContain('SECRET')
 
-    await $.classic.SessionStart({ source: 'clear' })
     const listed = await issue($, '')
     expect(listed.text).toContain('ENG-1 [Todo] 로그인 버그')
 
@@ -335,6 +333,18 @@ describe('/issue 명령', () => {
     await clock.settle()
 
     expect((await issue($, '')).text).toContain('ENG-2 [In Progress] 검색 개선')
+  })
+
+  test('/clear 뒤처럼 state가 비어 있으면(session.start 없음) 첫 명령에서 연결 이슈를 복원한다', async ($, on) => {
+    const clock = mock.clock(on)
+    engine(on, () => NO_PR)
+    mock.store(on, { [LINKED_KEY]: [ISSUE_B] })
+    mock.env(on, { LINEAR_API_KEY: 'k' })
+
+    const listed = await issue($, '')
+    await clock.settle()
+
+    expect(listed.text).toContain('ENG-2 [In Progress] 검색 개선')
   })
 
   test('status는 확인을 거절하면 변경하지 않고, 수락하면 변경한다', async ($, on) => {

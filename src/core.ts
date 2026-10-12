@@ -1,4 +1,4 @@
-import { atom, update } from 'claude-code'
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { Lang, ModuleFlags } from '../types'
@@ -12,6 +12,7 @@ const langAtom = atom({ plugin: 'takgon-mods', key: 'lang' } as const, 'ko')
 const modulesAtom = atom({ plugin: 'takgon-mods', key: 'modules' } as const, ALL_ON)
 const projectIdAtom = atom({ plugin: 'takgon-mods', key: 'projectId' } as const, '')
 const notifiedAtom = atom({ plugin: 'takgon-mods', key: 'notified' } as const, [])
+const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
 
 /** store 기준 현재 설정. 세션 상태가 아직 없을 수 있는 명령 처리에서도 쓴다. */
 const settings = async ($: EngineInterface): Promise<{ flags: ModuleFlags; lang: Lang }> => ({
@@ -19,14 +20,37 @@ const settings = async ($: EngineInterface): Promise<{ flags: ModuleFlags; lang:
   lang: toLang(await $.store.get(LANG_KEY)),
 })
 
-/** 세션 시작·복원 때 공통 상태를 store에서 다시 채우고 `/mods`를 등록한다. */
-const start = async ($: EngineInterface): Promise<void> => {
+/** 공통 상태(프로젝트·모듈 on/off·언어)를 store에서 다시 채우고 복원 표시를 남긴다. */
+const restore = async ($: EngineInterface): Promise<void> => {
+  await update($, restoredAtom, list => (list.includes('core') ? list : [...list, 'core']))
   const root = await $.session.root()
   const { flags, lang } = await settings($)
   await update($, projectIdAtom, () => projectId(root))
   await update($, notifiedAtom, () => [])
   await update($, modulesAtom, () => flags)
   await update($, langAtom, () => lang)
+}
+
+/**
+ * `/clear`·`/resume` 뒤에는 state가 비고 `session.start`도 오지 않는다(classic.SessionStart는 내장 보안 플러그인이
+ * user 플러그인을 건너뛰게 해 전달되지 않는다). 복원 표시가 없으면 첫 프롬프트·명령에서 다시 채운다.
+ */
+const ensureRestored = async ($: EngineInterface): Promise<void> => {
+  // 훅이 실패해 `.catch`가 답하면 같은 이벤트의 뒤쪽 훅(다른 명령 처리 등)이 건너뛰어지므로 여기서 삼킨다.
+  try {
+    if (!(await read($, restoredAtom)).includes('core')) {
+      await restore($)
+    }
+  } catch {
+    // 복원 실패 시 기본값으로 계속한다. 다음 진입에서 다시 시도하도록 표시를 되돌린다.
+    await update($, restoredAtom, list => list.filter(one => one !== 'core')).catch(() => undefined)
+  }
+}
+
+/** 세션 시작: 공통 상태 복원과 `/mods` 등록. */
+const start = async ($: EngineInterface): Promise<void> => {
+  await restore($)
+  const { lang } = await settings($)
   await $.command.register({
     name: 'mods',
     description: t(lang, 'mods.description'),
@@ -45,9 +69,15 @@ export const registerCore = (on: On): void => {
     return next(e)
   })
 
-  // /clear·/resume·compact 뒤 복원. 실패해도 세션 시작을 막지 않는다.
-  on('classic.SessionStart', async ($, e, next) => {
-    await start($)
+  // /clear·/resume 뒤 첫 프롬프트·명령에서 복원한다. core가 먼저 등록돼 다른 모듈 훅보다 바깥에서 돈다.
+  // 복원이 실패해도 프롬프트·명령은 그대로 진행한다.
+  on('prompt.submit', async ($, e, next) => {
+    await ensureRestored($)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('command.run', async ($, e, next) => {
+    await ensureRestored($)
     return next(e)
   }).catch(($, e, next) => next(e))
 

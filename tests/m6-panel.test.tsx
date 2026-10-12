@@ -1,4 +1,4 @@
-import type { On, SessionMeasureInput } from 'claude-code'
+import type { AgentStatus, On, SessionMeasureInput } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { projectId } from '../src/shared/keys'
@@ -6,8 +6,8 @@ import {
   addPin,
   fit,
   parsePinArgs,
+  applyAgentStatuses,
   startAgent,
-  stopAgent,
   toSnapshot,
   usageAlerts,
   visible,
@@ -29,8 +29,23 @@ describe('M6 순수 로직', () => {
     expect(pins[0]?.id).toBe('p20')
 
     let agents = startAgent([], 'x', 'Explore', 1)
-    agents = stopAgent(agents, 'x', 'Explore', 5)
+    agents = applyAgentStatuses(agents, [{ id: 'x', type: 'Explore', status: 'completed' }], 5)
     expect(agents).toEqual([{ agentId: 'x', agentType: 'Explore', status: 'done', startedAt: 1, endedAt: 5 }])
+    // 이미 끝난 기록의 종료 시각은 다시 덮지 않고, 목록에만 있는 에이전트(복원 전 시작)는 새로 더한다.
+    agents = applyAgentStatuses(
+      agents,
+      [
+        { id: 'x', type: 'Explore', status: 'completed' },
+        { id: 'y', type: 'Plan', status: 'killed' },
+        { id: 'z', type: 'Plan', status: 'waiting' },
+      ],
+      9,
+    )
+    expect(agents.map(one => [one.agentId, one.status, one.endedAt])).toEqual([
+      ['x', 'done', 5],
+      ['y', 'failed', 9],
+      ['z', 'running', undefined],
+    ])
     for (let i = 0; i < 60; i += 1) {
       agents = startAgent(agents, `a${i}`, 'Plan', i)
     }
@@ -73,9 +88,7 @@ const engine = (on: On, toasts: string[] = [], opened: string[] = []): void => {
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.root', () => ({ value: 'C:/proj' }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
-  on('classic.SessionStart', () => ({}))
-  on('classic.SubagentStart', () => ({}))
-  on('classic.SubagentStop', () => ({}))
+  on('prompt.submit', ($, e) => ({ text: e.text }))
   on('ui.open', ($, e) => {
     opened.push(e.id)
     return { value: { isPlaced: true } }
@@ -184,30 +197,56 @@ describe('M6 명령·패널', () => {
     expect((await ui.find({ key: 'task-t1' }))?.text).toContain('[ ]')
     await ui.press({ key: 'task-t1' })
     expect((await ui.find({ key: 'task-t1' }))?.text).toContain('[x]')
-
-    // 복원은 store에서 tasks를 다시 읽는다: 저장되지 않았다면 [ ]로 돌아간다.
-    await $.classic.SessionStart({ source: 'resume' })
-    expect((await ui.find({ key: 'task-t1' }))?.text).toContain('[x]')
   })
 
-  test('SubagentStart/Stop을 agent_id로 짝지어 Agents 탭에 기록한다', async ($, on) => {
+  test('agent.spawn으로 시작을, $.agent.list()로 완료·실패를 Agents 탭에 기록한다', async ($, on) => {
     engine(on)
     mock.store(on)
+    const infos: Array<{ id: string; type: string; status: AgentStatus }> = []
+    on('agent.spawn', ($, e) => ({ model: 'haiku', agentId: e.description }))
+    on('agent.list', () => ({
+      value: infos.map(one => ({ ...one, description: one.type })),
+    }))
     await $.session.start(START)
 
-    await $.classic.SubagentStart({ agent_id: 'ag-1', agent_type: 'Explore' })
-    await $.classic.SubagentStart({ agent_id: 'ag-2', agent_type: 'Plan' })
-    await $.classic.SubagentStop({
-      agent_id: 'ag-1',
-      agent_type: 'Explore',
-      agent_transcript_path: '',
-      stop_hook_active: false,
-    })
+    const spawn = (agentId: string, subagentType: string) =>
+      $.agent.spawn({
+        tool_use_id: `tu-${agentId}`,
+        prompt: 'p',
+        description: agentId,
+        subagentType,
+        provider: { plugin: 'engine', tier: 'core' },
+        parentModel: 'opus',
+        background: false,
+        fork: false,
+      })
+    await spawn('ag-1', 'Explore')
+    await spawn('ag-2', 'Plan')
+    await spawn('ag-3', 'Plan')
+    infos.push(
+      { id: 'ag-1', type: 'Explore', status: 'completed' },
+      { id: 'ag-2', type: 'Plan', status: 'running' },
+      { id: 'ag-3', type: 'Plan', status: 'failed' },
+    )
+    await $.session.measure({ context: { window: 200_000 }, rateLimits: [], changed: [] })
 
     const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'terminal', component: 'Pane', props: PANE, requestId: 'takgon-panel' })
     await ui.press({ key: 'tab-agents' })
     expect((await ui.find({ type: 'Text', text: /Explore/ }))?.text).toContain('완료')
-    expect((await ui.find({ type: 'Text', text: /Plan/ }))?.text).toContain('실행 중')
+    expect((await ui.findAll({ type: 'Text', text: /Plan/ })).map(one => one.text).join('|')).toMatch(
+      /실행 중.*실패|실패.*실행 중/,
+    )
+  })
+
+  test('/clear 뒤처럼 state가 비어 있으면 첫 명령에서 store의 핀을 복원한다', async ($, on) => {
+    engine(on)
+    const pid = projectId('C:/proj')
+    mock.store(on, { [`p/${pid}/m6/pins`]: [{ id: 'p1', text: '저장된 결정', createdAt: 1 }] })
+
+    // session.start 없이(= /clear 직후) 바로 명령을 실행한다.
+    const listed = await $.command.run(run('pin', 'list'))
+
+    expect(listed.text).toContain('저장된 결정')
   })
 
   test('session.measure에서 컨텍스트 80% 이상이면 세션당 1회만 toast하고 Usage 탭에 표시한다', async ($, on) => {

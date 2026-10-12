@@ -244,14 +244,6 @@ export const registerEdit = (on: On): void => {
     await registerCommand($)
     return next(e)
   })
-  on('classic.SessionStart', { source: 'clear' }, async ($, e, next) => {
-    await registerCommand($)
-    return next(e)
-  }).catch(($, e, next) => next(e))
-  on('classic.SessionStart', { source: 'resume' }, async ($, e, next) => {
-    await registerCommand($)
-    return next(e)
-  }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'edit' }, async ($, e) => ({ text: await runEdit($, e.args) }))
 

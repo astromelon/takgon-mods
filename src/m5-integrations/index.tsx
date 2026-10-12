@@ -38,6 +38,7 @@ const notifiedAtom = atom({ plugin: 'takgon-mods', key: 'notified' } as const, [
 const prAtom = atom({ plugin: 'takgon-mods', key: 'pr' } as const, null)
 const issueResultsAtom = atom({ plugin: 'takgon-mods', key: 'issueResults' } as const, [])
 const linkedIssuesAtom = atom({ plugin: 'takgon-mods', key: 'linkedIssues' } as const, [])
+const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
 
 /** PR 폴링 주기. */
 const POLL_MS = 60_000
@@ -292,6 +293,25 @@ const restore = async ($: EngineInterface): Promise<void> => {
   await update($, issueResultsAtom, () => [])
 }
 
+/**
+ * 이번 세션에 아직 복원하지 않았으면 연결 이슈를 불러오고 PR 상태를 곧바로 다시 읽는다. `/clear`·`/resume`은
+ * state를 비우고 `session.start`를 다시 보내지 않으므로(폴링 타이머는 남는다), 훅에 처음 들어올 때 채운다.
+ */
+const ensureRestored = async ($: EngineInterface): Promise<void> => {
+  if ((await read($, restoredAtom)).includes('m5')) {
+    return
+  }
+  await update($, restoredAtom, list => (list.includes('m5') ? list : [...list, 'm5']))
+  try {
+    await restore($)
+  } catch {
+    // 훅 실패로 번지면 같은 이벤트의 뒤쪽 훅이 건너뛰어지므로 삼키고, 다음 진입에서 다시 시도한다.
+    await update($, restoredAtom, list => list.filter(one => one !== 'm5'))
+    return
+  }
+  $.clock.after(0, () => void getStatus($))
+}
+
 /** 세션 초기화: 명령 등록, 상태 복원, PR 폴링 시작. */
 const init = async ($: EngineInterface): Promise<void> => {
   const { lang } = await settingsOf($)
@@ -303,6 +323,7 @@ const init = async ($: EngineInterface): Promise<void> => {
       argumentHint: tr(lang, 'issue.argumentHint'),
     })
     .catch(() => undefined)
+  await update($, restoredAtom, list => (list.includes('m5') ? list : [...list, 'm5']))
   await restore($)
   await update($, prAtom, () => null)
   poller?.cancel()
@@ -325,17 +346,14 @@ export const registerIntegrations = (on: On): void => {
     return result
   })
 
-  on('classic.SessionStart', { source: 'clear' }, async ($, e, next) => {
-    await restore($)
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  on('classic.SessionStart', { source: 'resume' }, async ($, e, next) => {
-    await restore($)
+  // M7 인수인계가 연결 이슈를 읽으므로, /clear 뒤 첫 프롬프트에서 미리 복원해 둔다.
+  on('prompt.submit', { origin: { kind: 'composer' } }, async ($, e, next) => {
+    await ensureRestored($)
     return next(e)
   }).catch(($, e, next) => next(e))
 
   on('turn.complete', { reason: 'answer' }, async ($, e, next) => {
+    await ensureRestored($)
     const result = await next(e)
     if (
       (await read($, modulesAtom)).integrations &&
@@ -347,5 +365,8 @@ export const registerIntegrations = (on: On): void => {
     return result
   })
 
-  on('command.run', { command: 'issue' }, async ($, e) => ({ text: await runIssue($, e.args) }))
+  on('command.run', { command: 'issue' }, async ($, e) => {
+    await ensureRestored($)
+    return { text: await runIssue($, e.args) }
+  })
 }

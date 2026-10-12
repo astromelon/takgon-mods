@@ -28,6 +28,7 @@ const tasksAtom = atom({ plugin: 'takgon-mods', key: 'tasks' } as const, [])
 const handoffAtom = atom({ plugin: 'takgon-mods', key: 'handoff' } as const, null)
 const pendingAtom = atom({ plugin: 'takgon-mods', key: 'handoffPending' } as const, false)
 const firedAtom = atom({ plugin: 'takgon-mods', key: 'handoffFired' } as const, false)
+const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
 
 /** 최신본 store 키: `p/{pid}/m7/latest`. */
 const latestKey = async ($: EngineInterface): Promise<string> =>
@@ -89,16 +90,9 @@ const generate = async (
 const latest = async ($: EngineInterface): Promise<HandoffInfo | null> =>
   (await read($, handoffAtom)) ?? toHandoffInfo(await $.store.get(await latestKey($)))
 
-/** 세션 시작·복원: 플래그 초기화, 명령 등록, 최신본이 있으면 상태를 채우고 toast로 안내한다. */
-const start = async ($: EngineInterface): Promise<void> => {
+/** 최신본이 있으면 상태를 채우고 toast로 `/handoff load`를 안내한다. */
+const restore = async ($: EngineInterface): Promise<void> => {
   const { isOn: isEnabled, lang } = await settingsFromStore($)
-  await update($, firedAtom, () => false)
-  await update($, pendingAtom, () => false)
-  await $.command.register({
-    name: 'handoff',
-    description: tr(lang, 'cmd.description'),
-    argumentHint: '[show | load]',
-  })
   if (!isEnabled) {
     return
   }
@@ -108,6 +102,34 @@ const start = async ($: EngineInterface): Promise<void> => {
   }
   await update($, handoffAtom, () => info)
   $.ui.toast(tr(lang, 'toast.available', { time: formatTime(info.createdAt) }))
+}
+
+/**
+ * 이번 세션에 아직 복원하지 않았으면 최신본을 불러온다. `/clear`·`/resume`은 state(복원 표시·세션당 1회 플래그 포함)를
+ * 비우고 `session.start`를 다시 보내지 않으므로, 이 모듈의 훅에 처음 들어올 때 다시 채우고 안내한다.
+ */
+const ensureRestored = async ($: EngineInterface): Promise<void> => {
+  if ((await read($, restoredAtom)).includes('m7')) {
+    return
+  }
+  await update($, restoredAtom, list => (list.includes('m7') ? list : [...list, 'm7']))
+  try {
+    await restore($)
+  } catch {
+    // 훅 실패로 번지면 같은 이벤트의 뒤쪽 훅이 건너뛰어지므로 삼키고, 다음 진입에서 다시 시도한다.
+    await update($, restoredAtom, list => list.filter(one => one !== 'm7'))
+  }
+}
+
+/** 세션 시작: 명령 등록과 복원. */
+const start = async ($: EngineInterface): Promise<void> => {
+  const { lang } = await settingsFromStore($)
+  await $.command.register({
+    name: 'handoff',
+    description: tr(lang, 'cmd.description'),
+    argumentHint: '[show | load]',
+  })
+  await ensureRestored($)
 }
 
 /** `/handoff [show|load]` 처리. */
@@ -180,37 +202,40 @@ const takePending = async ($: EngineInterface): Promise<string | null> => {
  * 1회에 문서를 context로 붙인다. 임계 판정은 `session.measure`(M6 전용) 대신 `turn.complete`에서 한다.
  */
 export const registerHandoff = (on: On): void => {
+  let isGenerating = false
+
   on('session.start', { isInteractive: true }, async ($, e, next) => {
     await start($)
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('classic.SessionStart', { source: 'clear' }, async ($, e, next) => {
-    await start($)
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  on('classic.SessionStart', { source: 'resume' }, async ($, e, next) => {
-    await start($)
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  on('command.run', { command: 'handoff' }, async ($, e) => ({ text: await runCommand($, e.args) }))
+  on('command.run', { command: 'handoff' }, async ($, e) => {
+    await ensureRestored($)
+    return { text: await runCommand($, e.args) }
+  })
 
   on('turn.complete', { reason: 'answer' }, async ($, e, next) => {
+    await ensureRestored($)
     const result = await next(e)
-    if (e.agentId === undefined) {
-      try {
-        await autoHandoff($)
-      } catch {
-        // 자동 생성 실패는 답변 흐름에 영향을 주지 않는다.
-      }
+    if (e.agentId === undefined && !isGenerating) {
+      // fork는 시간 상한을 줄 수 없어 턴 마무리를 붙잡지 않도록 타이머로 떼어 낸다. 한 번에 하나만 돈다.
+      isGenerating = true
+      $.clock.after(0, async () => {
+        try {
+          await autoHandoff($)
+        } catch {
+          // 자동 생성 실패는 답변 흐름에 영향을 주지 않는다.
+        } finally {
+          isGenerating = false
+        }
+      })
     }
     return result
   })
 
   // load 대기 중이면 사용자가 직접 친 다음 프롬프트 1회에 문서를 붙인다. 실패하면 프롬프트를 그대로 보낸다.
   on('prompt.submit', { origin: { kind: 'composer' } }, async ($, e, next) => {
+    await ensureRestored($)
     const text = await takePending($)
     return text === null ? next(e) : next({ ...e, context: [...(e.context ?? []), text] })
   }).catch(($, e, next) => next(e))

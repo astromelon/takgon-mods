@@ -84,20 +84,48 @@ export const startAgent = (
   return [...agents.filter(one => one.agentId !== agentId), run].slice(-MAX_AGENTS)
 }
 
-/** 서브에이전트 종료를 기록한다. 시작 기록이 없으면(패널 로드 전 시작) 종료 행을 새로 만든다. */
-export const stopAgent = (
+/** `$.agent.list()` 한 건 중 상태 갱신에 쓰는 부분. */
+export type AgentListing = { id: string; type: string; status: string }
+
+/** 엔진 AgentStatus → 패널 상태. 대기·실행 중은 running, 정상 종료는 done, 실패·강제 종료는 failed. */
+const toRunStatus = (status: string): AgentRun['status'] => {
+  if (status === 'completed' || status === 'idle') {
+    return 'done'
+  }
+  return status === 'failed' || status === 'killed' ? 'failed' : 'running'
+}
+
+/**
+ * `$.agent.list()` 결과로 상태를 갱신한다. 끝난 기록의 종료 시각은 처음 본 때로 고정하고, 목록에만 있는
+ * 에이전트(복원 전 시작 등)는 새로 더한다. 목록에서 빠진(엔진이 정리한) 기록은 마지막 상태를 유지한다.
+ */
+export const applyAgentStatuses = (
   agents: readonly AgentRun[],
-  agentId: string,
-  agentType: string,
+  listing: readonly AgentListing[],
   now: number,
 ): AgentRun[] => {
-  if (!agents.some(one => one.agentId === agentId)) {
-    const run: AgentRun = { agentId, agentType, status: 'done', startedAt: now, endedAt: now }
-    return [...agents, run].slice(-MAX_AGENTS)
-  }
-  return agents.map(one =>
-    one.agentId === agentId ? { ...one, status: 'done' as const, endedAt: now } : one,
-  )
+  const byId = new Map(listing.map(one => [one.id, one]))
+  const updated = agents.map(run => {
+    const info = byId.get(run.agentId)
+    if (info === undefined) {
+      return run
+    }
+    const status = toRunStatus(info.status)
+    if (status === 'running') {
+      return { ...run, status }
+    }
+    return { ...run, status, endedAt: run.endedAt ?? now }
+  })
+  const known = new Set(agents.map(run => run.agentId))
+  const added = listing
+    .filter(one => !known.has(one.id))
+    .map((one): AgentRun => {
+      const status = toRunStatus(one.status)
+      return status === 'running'
+        ? { agentId: one.id, agentType: one.type, status, startedAt: now }
+        : { agentId: one.id, agentType: one.type, status, startedAt: now, endedAt: now }
+    })
+  return [...updated, ...added].slice(-MAX_AGENTS)
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

@@ -26,6 +26,7 @@ const modulesAtom = atom({ plugin: 'takgon-mods', key: 'modules' } as const, ALL
 const prAtom = atom({ plugin: 'takgon-mods', key: 'pr' } as const, null)
 const tasksAtom = atom({ plugin: 'takgon-mods', key: 'tasks' } as const, [])
 const coachOnAtom = atom({ plugin: 'takgon-mods', key: 'coachOn' } as const, true)
+const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
 
 /** 코치 on/off 전역 store 키. */
 const COACH_KEY = globalKey('m4', 'coach')
@@ -50,6 +51,24 @@ const restore = async ($: EngineInterface): Promise<void> => {
   const coach = await $.store.get(COACH_KEY)
   await update($, tasksAtom, () => tasks)
   await update($, coachOnAtom, () => coach !== false)
+}
+
+/**
+ * 이번 세션에 아직 복원하지 않았으면 store에서 불러온다. `/clear`·`/resume`은 state(복원 표시 포함)를 비우고
+ * `session.start`를 다시 보내지 않으므로, 이 모듈의 훅에 처음 들어올 때 다시 채운다.
+ */
+const ensureRestored = async ($: EngineInterface): Promise<void> => {
+  if ((await read($, restoredAtom)).includes('m4')) {
+    return
+  }
+  await update($, restoredAtom, list => (list.includes('m4') ? list : [...list, 'm4']))
+  try {
+    await restore($)
+  } catch {
+    // 훅 실패로 번지면 같은 이벤트의 뒤쪽 훅이 건너뛰어지므로 삼키고, 다음 진입에서 다시 시도한다.
+    await update($, restoredAtom, list => list.filter(one => one !== 'm4'))
+    return
+  }
 }
 
 /** task 목록을 state와 store에 함께 쓴다. */
@@ -156,9 +175,10 @@ const coachPrompt = async (
  */
 export const registerComposer = (on: On): void => {
   let lastForkAt: number | undefined
+  let isForking = false
 
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    await restore($)
+    await ensureRestored($)
     const lang = await read($, langAtom)
     await $.command.register({
       name: 'coach',
@@ -168,33 +188,32 @@ export const registerComposer = (on: On): void => {
     return next(e)
   })
 
-  on('classic.SessionStart', { source: 'clear' }, async ($, e, next) => {
-    await restore($)
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  on('classic.SessionStart', { source: 'resume' }, async ($, e, next) => {
-    await restore($)
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
   on('turn.complete', { reason: 'answer' }, async ($, e, next) => {
+    await ensureRestored($)
     const result = await next(e)
-    if (e.agentId === undefined && (await isOn($))) {
-      try {
-        lastForkAt = await suggestNextSteps($, lastForkAt)
-      } catch {
-        // Next-steps는 부가 기능이므로 실패해도 턴 결과를 그대로 돌려준다.
-      }
+    if (e.agentId === undefined && !isForking && (await isOn($))) {
+      // fork는 시간 상한을 줄 수 없어 턴 마무리를 붙잡지 않도록 타이머로 떼어 낸다. 한 번에 하나만 돈다.
+      isForking = true
+      $.clock.after(0, async () => {
+        try {
+          lastForkAt = await suggestNextSteps($, lastForkAt)
+        } catch {
+          // Next-steps는 부가 기능이므로 실패해도 조용히 넘어간다.
+        } finally {
+          isForking = false
+        }
+      })
     }
     return result
   })
 
-  on('prompt.submit', { origin: { kind: 'composer' } }, async ($, e, next) => coachPrompt($, e, next)).catch(
-    ($, e, next) => next(e),
-  )
+  on('prompt.submit', { origin: { kind: 'composer' } }, async ($, e, next) => {
+    await ensureRestored($)
+    return coachPrompt($, e, next)
+  }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'coach' }, async ($, e) => {
+    await ensureRestored($)
     const lang = await read($, langAtom)
     if (!(await isOn($))) {
       return { text: tr(lang, 'coach.moduleOff') }
