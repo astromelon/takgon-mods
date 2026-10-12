@@ -1,3 +1,5 @@
+> 제출됨: https://github.com/anthropics/claude-code/issues/101447 (2026-10-12, 문서 이슈 양식으로 재구성)
+
 ### Title
 
 [mods] Document how test hooks must answer for the engine in `claude-code/testing` (op results, refusals, required answers)
