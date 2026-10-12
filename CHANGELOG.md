@@ -6,7 +6,7 @@
 ## [Unreleased]
 
 ### Added
-- `tools/e2e`: 실제 대화형 세션을 의사 터미널로 띄워 확인하는 E2E 하네스와 시나리오 10개(모델 미사용 5개 기본 실행), 엔진 제약 2·3번 감시용 probe 플러그인.
+- `tools/e2e`: 실제 대화형 세션을 의사 터미널로 띄워 확인하는 E2E 하네스와 시나리오 10개(모델 미사용 5개 기본 실행), 엔진 제약 1·2·3번 감시용 probe 플러그인(`probe_classic`·`probe_clear_state`·`probe_catch`).
 - GitHub Actions CI(`.github/workflows/ci.yml`): push·PR마다 Windows에서 `claude plugin validate`·`claude plugin test` 실행(Claude Code 2.1.296 고정).
   테스트가 Windows 절대 경로(`C:/proj`)를 가정해 Linux에서는 실패하므로 Windows만 돌린다.
 - `README.md`: 모듈·명령 표, `/mods` 등록 상태 표시와 `/panel`·`/tk-handoff` 임계치 사용법, 설치(private 저장소 `astromelon/takgon-mods`), 선택 의존성 준비 방법.

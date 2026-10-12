@@ -24,6 +24,7 @@ SCENARIOS = [
     "clear_restore",
     "mods_status",
     "browse",
+    "probe_classic",
     "probe_catch",
     "probe_clear_state",
     "url_detect",

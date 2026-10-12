@@ -26,7 +26,7 @@ def _run(args: str, log_name: str) -> tuple[str, str]:
         "--debug-file",
         str(debug),
     ]
-    done = subprocess.run(argv, cwd=project_dir("probe-catch"), capture_output=True, text=True, encoding="utf-8", timeout=180)
+    done = subprocess.run(argv, cwd=project_dir("probe-catch"), stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", timeout=180)
     log = debug.read_text(encoding="utf-8", errors="replace") if debug.exists() else ""
     return done.stdout + done.stderr, log
 
