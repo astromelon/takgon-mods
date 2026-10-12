@@ -1,0 +1,52 @@
+# Changelog
+
+이 프로젝트의 주요 변경 사항을 기록한다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고,
+버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따른다.
+
+## [0.2.0] - 2026-10-12
+
+0.1.0을 실제 세션에 설치해 점검하면서 드러난 엔진 동작 차이를 바로잡고, GitLab을 지원한다.
+
+### Added
+- **M5**: GitLab MR 조회. `origin` 원격이 github.com이면 `gh`, 그 밖(gitlab.com·사내 셀프호스팅)이면 `glab`을 쓴다.
+  `glab mr view -F json`으로 MR·파이프라인을, 승인 API로 리뷰 상태를 읽어 band에 `MR !n` 배지를 표시한다.
+  glab 미설치·미인증은 원인별 toast 1회, MR 없음은 조용히 숨긴다. (`42909f0`)
+- **M6**: Agents 탭이 서브에이전트 실패(`failed`·`killed`)도 기록한다. (`208de6f`)
+- `tools/headless.mjs`용 playwright 로컬 의존성(`package.json`). 전역 설치는 ESM이 찾지 못한다. (`d06cf5a`)
+
+### Changed
+- **M6**: 서브에이전트 기록을 `classic.SubagentStart/Stop`에서 `agent.spawn` + `$.agent.list()`로 바꿨다. (`208de6f`)
+- **M4·M7**: Next-steps·자동 인수인계의 `$.model.fork`를 `$.clock.after`로 떼어 `turn.complete`를 붙잡지 않는다.
+  fork에는 시간 상한을 줄 수 없어서다. 한 번에 하나만 돈다. (`208de6f`)
+- `PrStatus`에 `provider`(`github` | `gitlab`) 필드를 추가했다(선택, 없으면 github). (`42909f0`)
+
+### Fixed
+- **`/clear`·`/resume` 뒤 상태 유실**: `/clear`는 `$.state`를 전부 비우고 `session.start`를 다시 보내지 않는다(실측).
+  `restored` state에 복원한 모듈을 기록하고, 비어 있으면 각 모듈이 첫 프롬프트·명령 때 store에서 다시 채운다.
+  모듈 설정·언어·핀·할 일·연결 이슈·인수인계 안내가 복원된다(대화형 세션에서 확인). (`208de6f`)
+- **`classic.*` 훅이 동작하지 않음**: 내장 보안 플러그인이 user 플러그인의 `classic.*` 훅을 건너뛰게 한다(debug 로그 확인).
+  해당 훅을 모두 제거했다. (`208de6f`)
+- **M8**: desktop에서 다이어그램이 늘 원본 코드로 보이던 문제. mermaid-cli가 SVG에 넣는 내장 폰트(약 167KB)를
+  표시할 때만 빼서 131,072자 한도 안에 든다(예: 197,069자 → 29,999자). 저장 파일은 원본 그대로다. (`b07f40b`)
+- 복원 실패가 같은 이벤트의 다른 모듈 훅(명령 처리 등)을 건너뛰게 하던 문제. 훅 안에서 예외를 처리한다. (`208de6f`)
+
+### Removed
+- 엔진이 생성하는 `tsconfig.json`을 git 추적에서 뺐다. (`62ae794`)
+
+## [0.1.0] - 2026-10-12
+
+첫 버전. 8개 모듈과 공통 코어.
+
+### Added
+- **core**: 단일 진입점, `/mods`(모듈 목록·on/off·`lang ko|en`), store 네임스페이스(`g/…`, `p/{프로젝트 해시}/…`). (`8c431df`, `05fa3c6`)
+- **M1 i18n**: Spinner·TurnDuration·ToolProgress·PromptHint·SessionMode 한국어화. (`0b5fb33`)
+- **M5 연동**: `gh`로 현재 브랜치 PR 상태 폴링(60초, 턴 완료 시 1회), Linear 이슈 검색·연결·상태 변경(`/issue`). (`c410303`)
+- **M4 Composer Bar**: 프롬프트 위 band에 PR 배지와 다음 작업 후보, 모호한 요청을 다듬어 고르게 하는 프롬프트 코치(`/coach`). (`ed0b598`)
+- **M6 작업 패널**: `/panel` pane(핀·할 일·에이전트·사용량·인수인계 탭), `/pin`. 컨텍스트·사용 한도 80% toast. (`63870ad`)
+- **M7 자동 인수인계**: 컨텍스트 75%에서 세션당 1회 또는 `/handoff`로 작성, `/handoff load`로 다음 프롬프트에 첨부. (`c09dc42`)
+- **M8 다이어그램**: 응답의 mermaid 블록을 `mmdc`로 미리 렌더해 desktop은 SVG, terminal은 PNG로 표시. (`af97317`)
+- **M3 선택 영역 수정**: `/edit`로 파일 범위·선택·DOM 대상 지정, 범위 밖 Edit·Write 차단. (`23b2c2a`)
+- **M2 브라우저**: Bash 출력의 localhost URL 감지, `/browse`로 스크린샷·콘솔 에러 수집과 프롬프트 첨부. (`22eab76`)
+
+### Fixed
+- 코치 판정 실패가 다른 모듈의 프롬프트 context 첨부를 막던 문제. (`55aaa64`)
