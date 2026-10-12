@@ -130,6 +130,7 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
   플러그인 설계 초기에 알아야 하는 제약인데 skill·reference에 없다.
 - **대응**: 공유 matcher(`{ isInteractive: true }`, `{ reason: 'answer' }`, `{ origin: { kind: 'composer' } }`)와 이벤트 배정표(SPEC).
 - **제안**: reference에 규칙 명시. 판별 필드가 없는 이벤트(`session.measure` 등)를 여러 모듈이 구독할 방법 제공.
+- **제출**: anthropics/claude-code#101450
 
 ## 5. `$`·atom은 import 경계를 넘을 수 없음
 
@@ -144,6 +145,7 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
 - **영향**: `$`를 쓰는 공통 헬퍼(toast 1회, 출력 폴더 생성 등)를 공유할 수 없어 모듈마다 같은 코드가 반복된다.
   모듈 간 공유 state도 파일마다 같은 리터럴로 atom을 다시 선언해야 한다.
 - **제안**: reference의 "A mod in one paragraph"에 규칙 명시. 가능하면 import한 함수 안으로의 정적 추적 지원.
+- **제출**: anthropics/claude-code#101451
 
 ## 6. `$.model.fork`에 시간 상한 옵션이 없음
 
@@ -214,6 +216,7 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
   - (a) `command.register` 문서와 `CommandSpec`에 "사용자·프로젝트 명령·스킬과 같은 이름도 거부"를 명시.
   - (b) debug 로그의 `hook failed closed` 줄에 오류 메시지(최소한 앞부분)를 남겨, 계측 없이 원인을 알 수 있게.
   - (c) 거부 사유 문구가 스킬 출처(user/project)를 구분하도록.
+- **제출**: anthropics/claude-code#101452
 
 ## 기타 관찰(이슈 아님)
 
