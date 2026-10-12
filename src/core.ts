@@ -55,7 +55,7 @@ const start = async ($: EngineInterface): Promise<void> => {
     name: 'mods',
     description: t(lang, 'mods.description'),
     argumentHint: '[<module> on|off | lang ko|en]',
-  })
+  }).catch(() => undefined)
 }
 
 /**

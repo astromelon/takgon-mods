@@ -96,7 +96,7 @@ export const buildForkPrompt = (lang: Lang, refs: HandoffRefs): string => {
   ].join('\n')
 }
 
-/** `/handoff` 인자 해석. `threshold`의 value가 null이면 현재 값 보기. */
+/** `/tk-handoff` 인자 해석. `threshold`의 value가 null이면 현재 값 보기. */
 export type HandoffAction =
   | 'create'
   | 'show'

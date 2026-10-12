@@ -24,7 +24,7 @@ const ko = {
   'button.refresh': '새로고침',
   'toast.nodeMissing': 'browser: node를 찾을 수 없어 HTTP 상태만 표시합니다.',
   'toast.playwrightMissing':
-    'browser: playwright가 없어 HTTP 상태만 표시합니다. `npm i -g playwright && npx playwright install chromium`',
+    'browser: playwright가 없어 HTTP 상태만 표시합니다. takgon-mods 폴더에서 `npm install && npx playwright install chromium`을 실행하세요(전역 설치는 인식되지 않습니다).',
   'toast.headlessFailed': 'browser: headless 스크립트 결과를 읽지 못해 HTTP 상태만 표시합니다.',
   'toast.openFailed': 'browser: 외부 브라우저를 열지 못했습니다.',
 } as const
@@ -55,7 +55,7 @@ const en: Record<BrowserKey, string> = {
   'button.refresh': 'Refresh',
   'toast.nodeMissing': 'browser: node not found; showing HTTP status only.',
   'toast.playwrightMissing':
-    'browser: playwright not found; showing HTTP status only. `npm i -g playwright && npx playwright install chromium`',
+    'browser: playwright not found; showing HTTP status only. Run `npm install && npx playwright install chromium` in the takgon-mods folder (a global install is not picked up).',
   'toast.headlessFailed': 'browser: could not read the headless script output; showing HTTP status only.',
   'toast.openFailed': 'browser: could not open the external browser.',
 }

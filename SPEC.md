@@ -74,7 +74,8 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
 # 공통
 - 모듈별 on/off 설정을 두고, 기본값은 전부 on이다. 전역 키 `g/core/modules`에 저장하고 `/mods`로 토글한다.
   - 명령 체계 **[수정]**: `/mods` 하나로 통합한다 — `/mods`(목록·상태), `/mods <모듈> on|off`, `/mods lang en|ko`,
-    기능 명령(`/coach`(`/issue`, `/pin`, `/panel`, `/handoff`, `/browse`, `/edit`)은 별도.
+    기능 명령(`/coach`, `/issue`, `/pin`, `/panel`, `/tk-handoff`, `/browse`, `/edit`)은 별도.
+    `/tk-handoff`는 사용자 스킬 `/handoff`와 이름이 겹쳐 바꿨다.
   - **내장 명령과 이름이 같으면 `$.command.register`가 거부한다.** 각 모듈 완료 시 validate 결과로 등록 성공을 확인하고,
     충돌하면 `tk-` 접두사(`/tk-mods` 등)로 바꾼다.
   - 꺼진 모듈은 hook에서 즉시 `next(e)`를 반환하고 타이머를 cancel한다.

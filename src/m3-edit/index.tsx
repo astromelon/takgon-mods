@@ -36,7 +36,7 @@ const registerCommand = async ($: EngineInterface): Promise<void> => {
     name: 'edit',
     description: tr(lang, 'edit.description'),
     argumentHint: '<path>:<start>-<end> | sel | dom <selector> [url] | clear',
-  })
+  }).catch(() => undefined)
 }
 
 /** 같은 원인의 toast는 세션당 1회만. */

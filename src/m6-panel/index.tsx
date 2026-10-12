@@ -90,8 +90,8 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 /** 세션 시작: 명령 등록과 복원. */
 const init = async ($: EngineInterface): Promise<void> => {
   const lang = await langOf($)
-  await $.command.register({ name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close | pinboard | tasks | agents | usage | handoff | threshold <1-99>]' })
-  await $.command.register({ name: 'pin', description: tr(lang, 'pin.description'), argumentHint: '[<text>|list]' })
+  await $.command.register({ name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close | pinboard | tasks | agents | usage | handoff | threshold <1-99>]' }).catch(() => undefined)
+  await $.command.register({ name: 'pin', description: tr(lang, 'pin.description'), argumentHint: '[<text>|list]' }).catch(() => undefined)
   await ensureRestored($)
 }
 
