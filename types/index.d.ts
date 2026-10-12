@@ -131,6 +131,8 @@ declare module 'claude-code' {
       pins: Pin[]
       agents: AgentRun[]
       usage: UsageSnapshot | null
+      /** 사용량 경고 임계치(%)(`g/m6/threshold` 미러). Usage 탭이 그린다. */
+      usageThreshold: number
 
       // M7 handoff
       handoff: HandoffInfo | null

@@ -6,7 +6,7 @@
 ## [Unreleased]
 
 ### Added
-- **M6**: `/panel threshold [1-99]`로 사용량 경고 임계치(컨텍스트·사용 한도, 기본 80%) 설정. 전역 store 키 `g/m6/threshold`.
+- **M6**: `/panel threshold [1-99]`로 사용량 경고 임계치(컨텍스트·사용 한도, 기본 80%) 설정. 전역 store 키 `g/m6/threshold`. Usage 탭에 현재 임계치 표시.
 - **M6**: `/panel <탭>`(pinboard|tasks|agents|usage|handoff)으로 원하는 탭을 바로 열기, 탭 버튼 숫자 단축키 1~5. (`77ce7b0`)
 - **M7**: `/handoff threshold [1-99]`로 자동 인수인계 임계치(기본 75%) 설정. 전역 store 키 `g/m7/threshold`. (`ca24cab`)
 - `docs/engine-constraints.md`: 실측한 엔진 제약 8건 정리, `docs/issues/`: claude-code 이슈 초안(4·5번).

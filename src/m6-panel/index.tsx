@@ -38,6 +38,7 @@ const pinsAtom = atom({ plugin: 'takgon-mods', key: 'pins' } as const, [])
 const tasksAtom = atom({ plugin: 'takgon-mods', key: 'tasks' } as const, [])
 const agentsAtom = atom({ plugin: 'takgon-mods', key: 'agents' } as const, [])
 const usageAtom = atom({ plugin: 'takgon-mods', key: 'usage' } as const, null)
+const usageThresholdAtom = atom({ plugin: 'takgon-mods', key: 'usageThreshold' } as const, USAGE_THRESHOLD)
 const handoffAtom = atom({ plugin: 'takgon-mods', key: 'handoff' } as const, null)
 const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
 
@@ -56,13 +57,18 @@ const pinsKey = (pid: string): string => projectKey(pid, 'm6', 'pins')
 /** M4와 같은 키. */
 const tasksKey = (pid: string): string => projectKey(pid, 'm4', 'tasks')
 
+/** 사용량 경고 임계치(%) 전역 store 키. 없으면 80. */
+const THRESHOLD_KEY = globalKey('m6', 'threshold')
+
 /** 핀·할 일을 store에서 다시 읽는다. 에이전트·사용량은 세션 범위라 복원하지 않는다. */
 const restore = async ($: EngineInterface): Promise<void> => {
   const pid = await pidOf($)
   const pins = toPins(await $.store.get(pinsKey(pid)))
   const tasks = toTasks(await $.store.get(tasksKey(pid)))
+  const threshold = toPercent(await $.store.get(THRESHOLD_KEY), USAGE_THRESHOLD)
   await update($, pinsAtom, () => pins)
   await update($, tasksAtom, () => tasks)
+  await update($, usageThresholdAtom, () => threshold)
 }
 
 /**
@@ -126,9 +132,6 @@ const toggle = async ($: EngineInterface, id: string): Promise<void> => {
 }
 
 /** 사용량 상태를 갱신하고 80% 이상 항목을 원인별 세션당 1회 toast한다. */
-/** 사용량 경고 임계치(%) 전역 store 키. 없으면 80. */
-const THRESHOLD_KEY = globalKey('m6', 'threshold')
-
 const measure = async ($: EngineInterface, reading: UsageReading): Promise<void> => {
   const snapshot = toSnapshot(reading, await $.clock.now())
   await update($, usageAtom, () => snapshot)
@@ -150,9 +153,10 @@ const measure = async ($: EngineInterface, reading: UsageReading): Promise<void>
 
 const STATUS_KEY = { running: 'agents.running', done: 'agents.done', failed: 'agents.failed' } as const
 
-const usageLines = (lang: Lang, usage: UsageSnapshot | null): string[] => {
+const usageLines = (lang: Lang, usage: UsageSnapshot | null, threshold: number): string[] => {
+  const limit = tr(lang, 'usage.threshold', { percent: threshold })
   if (usage === null) {
-    return [tr(lang, 'usage.empty')]
+    return [tr(lang, 'usage.empty'), limit]
   }
   const lines = [
     tr(lang, 'usage.context', {
@@ -168,6 +172,7 @@ const usageLines = (lang: Lang, usage: UsageSnapshot | null): string[] => {
   if (usage.costUsd !== undefined) {
     lines.push(tr(lang, 'usage.cost', { usd: usage.costUsd.toFixed(2) }))
   }
+  lines.push(limit)
   return lines
 }
 
@@ -211,7 +216,9 @@ export const registerPanel = (on: On): void => {
     }
     if (typeof action === 'object') {
       if (action.value !== null) {
-        await $.store.set(THRESHOLD_KEY, action.value)
+        const value = action.value
+        await $.store.set(THRESHOLD_KEY, value)
+        await update($, usageThresholdAtom, () => value)
       }
       const value = action.value ?? toPercent(await $.store.get(THRESHOLD_KEY), USAGE_THRESHOLD)
       return { text: tr(lang, 'panel.threshold', { value }) }
@@ -358,7 +365,7 @@ export const registerPanel = (on: On): void => {
           </Box>
         )
     } else if (tab === 'usage') {
-      const { shown, hidden } = visible(usageLines(lang, await read($, usageAtom)), rows)
+      const { shown, hidden } = visible(usageLines(lang, await read($, usageAtom), await read($, usageThresholdAtom)), rows)
       body = (
         <Box flexDirection="column">
           {shown.map(line => (
