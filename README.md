@@ -17,18 +17,23 @@ Claude Code용 개인 생산성 mods 플러그인. 모듈 8개를 한 플러그�
 
 ## 설치
 
+저장소(`astromelon/takgon-mods`)는 private이다. 설치하는 PC에서 먼저 저장소 접근 권한이 있는 계정으로
+`gh auth login`과 `gh auth setup-git`을 해 두어야 Claude Code가 저장소를 받아 온다.
+
 Claude Code 터미널 세션의 프롬프트에서:
 
 ```
-/plugin install takgon-mods --marketplace <owner>/<repo>
+/plugin install takgon-mods --marketplace astromelon/takgon-mods
 ```
 
 `Add marketplace?`에 `y`, 설치 범위는 user(모든 프로젝트)를 고른다. CLI로는:
 
 ```bash
-claude plugin marketplace add <owner>/<repo>
+claude plugin marketplace add astromelon/takgon-mods
 claude plugin install takgon-mods@takgon
 ```
+
+업데이트: `claude plugin update takgon-mods@takgon` 후 열린 세션에서 `/reload-plugins`.
 
 특정 저장소에서만 끄기: `claude plugin disable takgon-mods@takgon --scope local`
 
