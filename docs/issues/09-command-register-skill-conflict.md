@@ -55,7 +55,7 @@ Combined with how `.catch` resumes the chain (see "Why it cascades" below), one 
 
 **Why it cascades**
 
-When a hook throws before calling `next` and its `.catch` answers `next(e)`, the chain resumes at the **next plugin**, skipping the remaining hooks of the failing plugin for that event. Reproduced with two throwaway plugins via `claude -p --plugin-dir`: the failing plugin's inner `command.run` hook never ran, while another plugin's hook and the engine did. (Filed separately: "After a hook throws, `.catch`'s `next(e)` resumes at the next plugin…".) So one refused name in a "module A" hook removes modules B, C, D of the same plugin.
+When a hook throws before calling `next` and its `.catch` answers `next(e)`, the chain resumes at the **next plugin**, skipping the remaining hooks of the failing plugin for that event. Reproduced with two throwaway plugins via `claude -p --plugin-dir`: the failing plugin's inner `command.run` hook never ran, while another plugin's hook and the engine did. (Details in the companion issue "After a hook throws, `.catch`'s `next(e)` resumes at the next plugin…".) So one refused name in a "module A" hook removes modules B, C, D of the same plugin.
 
 **Expected**
 
