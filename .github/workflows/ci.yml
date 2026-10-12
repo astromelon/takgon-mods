@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    name: validate · test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    env:
+      # 로그인 없이 동작한다(validate·test는 모델을 호출하지 않는다). 자동 업데이트와 부가 트래픽은 끈다.
+      DISABLE_AUTOUPDATER: '1'
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 테스트를 검증한 Claude Code 버전으로 고정한다. 올릴 때는 로컬에서 validate·test를 먼저 통과시킨다.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.296
+
+      - name: Version
+        run: claude --version
+
+      - name: Validate plugin
+        run: claude plugin validate .
+
+      - name: Test plugin
+        run: claude plugin test .
