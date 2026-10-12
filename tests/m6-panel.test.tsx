@@ -65,6 +65,13 @@ describe('M6 순수 로직', () => {
       0,
     )
     expect(usageAlerts(snap).map(alert => alert.cause)).toEqual(['m6:context80', 'm6:rate80:seven_day'])
+    // 임계치를 낮추면 79.9%도 경고하고, 높이면 92%만 경고한다.
+    expect(usageAlerts(snap, 50).map(alert => alert.cause)).toEqual([
+      'm6:context80',
+      'm6:rate80:five_hour',
+      'm6:rate80:seven_day',
+    ])
+    expect(usageAlerts(snap, 90).map(alert => alert.cause)).toEqual(['m6:rate80:seven_day'])
     expect(fit('가나다라마', 6)).toBe('가나…')
     expect(fit('abc', 6)).toBe('abc')
     expect(visible([1, 2, 3, 4], 3)).toEqual({ shown: [1, 2], hidden: 2 })
@@ -122,6 +129,10 @@ describe('/panel 인자(순수)', () => {
     expect(parsePanelArgs('usage')).toBe('usage')
     expect(parsePanelArgs('help')).toBe('help')
     expect(parsePanelArgs('nope')).toBe('help')
+    expect(parsePanelArgs('threshold')).toEqual({ kind: 'threshold', value: null })
+    expect(parsePanelArgs('threshold 60')).toEqual({ kind: 'threshold', value: 60 })
+    expect(parsePanelArgs('threshold 0')).toBe('help')
+    expect(parsePanelArgs('threshold 60 70')).toBe('help')
   })
 })
 
@@ -271,6 +282,26 @@ describe('M6 명령·패널', () => {
     const listed = await $.command.run(run('pin', 'list'))
 
     expect(listed.text).toContain('저장된 결정')
+  })
+
+  test('/panel threshold로 바꾼 임계치로 경고하고, 인자 없이 부르면 현재 값을 보여준다', async ($, on) => {
+    const toasts: string[] = []
+    engine(on, toasts)
+    mock.store(on)
+    await $.session.start(START)
+    const at60: SessionMeasureInput = {
+      context: { tokens: 120_000, window: 200_000, percent: 60 },
+      rateLimits: [],
+      changed: ['context'],
+    }
+
+    expect((await $.command.run(run('panel', 'threshold'))).text).toContain('80%')
+    await $.session.measure(at60)
+    expect(toasts).toHaveLength(0)
+
+    expect((await $.command.run(run('panel', 'threshold 50'))).text).toContain('50%')
+    await $.session.measure(at60)
+    expect(toasts.filter(text => text.includes('컨텍스트'))).toHaveLength(1)
   })
 
   test('session.measure에서 컨텍스트 80% 이상이면 세션당 1회만 toast하고 Usage 탭에 표시한다', async ($, on) => {

@@ -4,6 +4,7 @@
  * `$`를 받지 않는다(엔진이 import 경계 너머의 `$` 전달을 거부한다). store·state 접근은 `index.tsx`에서 한다.
  */
 import type { AgentRun, PanelTab, Pin, TaskItem, UsageSnapshot } from '../../types'
+import { parsePercent } from '../shared/settings'
 
 /** pane id. `ui.render`의 `requestId`와 같다. */
 export const PANE_ID = 'takgon-panel'
@@ -39,9 +40,14 @@ export const parsePinArgs = (args: string): PinAction => {
 }
 
 /** `/panel` 인자의 해석 결과. */
-export type PanelAction = 'open' | 'close' | 'help' | PanelTab
+export type PanelAction =
+  | 'open'
+  | 'close'
+  | 'help'
+  | PanelTab
+  | { kind: 'threshold'; value: number | null }
 
-/** `/panel [close|<탭>]` 해석. 탭 이름(`agents` 등)이면 그 탭으로 열고, 모르는 인자는 사용법. */
+/** `/panel [close|<탭>|threshold [n]]` 해석. 탭 이름(`agents` 등)이면 그 탭으로 열고, 모르는 인자는 사용법. */
 export const parsePanelArgs = (args: string): PanelAction => {
   const text = args.trim().toLowerCase()
   if (text === '') {
@@ -49,6 +55,14 @@ export const parsePanelArgs = (args: string): PanelAction => {
   }
   if (text === 'close') {
     return 'close'
+  }
+  const [word, value, ...rest] = text.split(/\s+/)
+  if (word === 'threshold' && rest.length === 0) {
+    if (value === undefined) {
+      return { kind: 'threshold', value: null }
+    }
+    const percent = parsePercent(value)
+    return percent === null ? 'help' : { kind: 'threshold', value: percent }
   }
   return TABS.find(tab => tab === text) ?? 'help'
 }
@@ -192,14 +206,14 @@ export type UsageAlert =
   | { cause: string; kind: 'rate'; limit: string; percent: number }
 
 /** 임계치(80%) 이상인 항목을 경고로 낸다. 이미 알린 원인은 호출 쪽에서 거른다. */
-export const usageAlerts = (snapshot: UsageSnapshot): UsageAlert[] => {
+export const usageAlerts = (snapshot: UsageSnapshot, threshold: number = USAGE_THRESHOLD): UsageAlert[] => {
   const alerts: UsageAlert[] = []
   const percent = snapshot.contextPercent
-  if (percent !== undefined && percent >= USAGE_THRESHOLD) {
+  if (percent !== undefined && percent >= threshold) {
     alerts.push({ cause: CONTEXT_CAUSE, kind: 'context', percent })
   }
   for (const rate of snapshot.rateLimits) {
-    if (rate.percentUsed >= USAGE_THRESHOLD) {
+    if (rate.percentUsed >= threshold) {
       alerts.push({ cause: rateCause(rate.kind), kind: 'rate', limit: rate.kind, percent: rate.percentUsed })
     }
   }

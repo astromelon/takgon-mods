@@ -3,6 +3,20 @@
 이 프로젝트의 주요 변경 사항을 기록한다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따른다.
 
+## [Unreleased]
+
+### Added
+- **M6**: `/panel threshold [1-99]`로 사용량 경고 임계치(컨텍스트·사용 한도, 기본 80%) 설정. 전역 store 키 `g/m6/threshold`.
+- **M6**: `/panel <탭>`(pinboard|tasks|agents|usage|handoff)으로 원하는 탭을 바로 열기, 탭 버튼 숫자 단축키 1~5. (`77ce7b0`)
+- **M7**: `/handoff threshold [1-99]`로 자동 인수인계 임계치(기본 75%) 설정. 전역 store 키 `g/m7/threshold`. (`ca24cab`)
+- `docs/engine-constraints.md`: 실측한 엔진 제약 8건 정리, `docs/issues/`: claude-code 이슈 초안(4·5번).
+
+### Changed
+- 퍼센트 임계치 해석(1~99 정수)을 `shared/settings`의 `toPercent`·`parsePercent`로 모아 M6·M7이 함께 쓴다.
+
+### Fixed
+- `plugin.json`·`marketplace.json`에 author·description을 채워 validate 경고 제거. (`0cc5c6f`)
+
 ## [0.2.0] - 2026-10-12
 
 0.1.0을 실제 세션에 설치해 점검하면서 드러난 엔진 동작 차이를 바로잡고, GitLab을 지원한다.
