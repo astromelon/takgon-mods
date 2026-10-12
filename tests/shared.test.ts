@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { t } from '../src/shared/i18n'
 import { globalKey, projectId, projectKey } from '../src/shared/keys'
-import { parseModsArgs, parsePercent, toPercent } from '../src/shared/settings'
+import { parseModsArgs, parsePercent, refusalReason, toPercent } from '../src/shared/settings'
 
 const mods = ($: Engine, args: string) =>
   $.command.run({
@@ -53,6 +53,16 @@ describe('퍼센트 설정(임계치)', () => {
     expect(parsePercent('100')).toBeNull()
     expect(parsePercent('abc')).toBeNull()
     expect(parsePercent('5%')).toBeNull()
+  })
+})
+
+describe('명령 등록 거부 사유', () => {
+  test('엔진 메시지에서 refused: 뒤 사유만 꺼내고, 형식이 다르면 메시지 전체를 쓴다', () => {
+    const message = `takgon-mods: $.command.register: "/handoff" refused: it is the user's /handoff`
+    expect(refusalReason(new Error(message))).toBe("it is the user's /handoff")
+    expect(refusalReason(new Error('boom'))).toBe('boom')
+    expect(refusalReason('x'.repeat(300)).length).toBeLessThanOrEqual(120)
+    expect(refusalReason(undefined)).toBe('')
   })
 })
 

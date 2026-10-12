@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, On } from 'claude-code'
+import type { CommandSpec, EngineInterface, On } from 'claude-code'
 
 import type { HandoffInfo, Lang } from '../../types'
-import { toLang } from '../shared/i18n'
+import { t, toLang } from '../shared/i18n'
 import { globalKey, projectId, projectKey } from '../shared/keys'
-import { LANG_KEY, MODULES_KEY, OUTPUT_GITIGNORE, outputDir, toFlags } from '../shared/settings'
+import { LANG_KEY, MODULES_KEY, OUTPUT_GITIGNORE, markNotified, outputDir, refusalReason, registerCause, toFlags } from '../shared/settings'
 import { ALL_ON } from '../shared/state'
 import {
   MAX_SUFFIX,
@@ -21,6 +21,7 @@ import {
 import { tr } from './messages'
 
 const langAtom = atom({ plugin: 'takgon-mods', key: 'lang' } as const, 'ko')
+const notifiedAtom = atom({ plugin: 'takgon-mods', key: 'notified' } as const, [])
 const modulesAtom = atom({ plugin: 'takgon-mods', key: 'modules' } as const, ALL_ON)
 const pinsAtom = atom({ plugin: 'takgon-mods', key: 'pins' } as const, [])
 const prAtom = atom({ plugin: 'takgon-mods', key: 'pr' } as const, null)
@@ -30,6 +31,27 @@ const handoffAtom = atom({ plugin: 'takgon-mods', key: 'handoff' } as const, nul
 const pendingAtom = atom({ plugin: 'takgon-mods', key: 'handoffPending' } as const, false)
 const firedAtom = atom({ plugin: 'takgon-mods', key: 'handoffFired' } as const, false)
 const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
+
+/**
+ * 명령을 등록한다. 같은 이름의 사용자·내장 명령 때문에 거부되면 예외를 삼켜 다른 초기화(이 모듈과 뒤쪽 모듈)를 막지 않고,
+ * 명령마다 세션당 1회 toast로 알린다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
+ */
+const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<void> => {
+  try {
+    await $.command.register(spec)
+  } catch (error) {
+    try {
+      const marked = markNotified(await read($, notifiedAtom), registerCause(spec.name))
+      if (marked !== null) {
+        await update($, notifiedAtom, () => marked)
+        const vars = { name: spec.name, reason: refusalReason(error) }
+        $.ui.toast(t(await read($, langAtom), 'mods.registerRefused', vars))
+      }
+    } catch {
+      // 알림 실패도 초기화를 막지 않는다.
+    }
+  }
+}
 
 /** 최신본 store 키: `p/{pid}/m7/latest`. */
 const latestKey = async ($: EngineInterface): Promise<string> =>
@@ -125,11 +147,11 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 /** 세션 시작: 명령 등록과 복원. */
 const start = async ($: EngineInterface): Promise<void> => {
   const { lang } = await settingsFromStore($)
-  await $.command.register({
+  await registerCommand($, {
     name: 'tk-handoff',
     description: tr(lang, 'cmd.description'),
     argumentHint: '[show | load | threshold <1-99>]',
-  }).catch(() => undefined)
+  })
   await ensureRestored($)
 }
 

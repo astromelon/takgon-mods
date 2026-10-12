@@ -1,8 +1,10 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, On, PromptSubmitInput, PromptSubmitResult } from 'claude-code'
+import type { CommandSpec, EngineInterface, On, PromptSubmitInput, PromptSubmitResult } from 'claude-code'
 
 import type { TaskItem } from '../../types'
 import { globalKey, projectId, projectKey } from '../shared/keys'
+import { t } from '../shared/i18n'
+import { markNotified, refusalReason, registerCause } from '../shared/settings'
 import { ALL_ON } from '../shared/state'
 import {
   buildForkPrompt,
@@ -22,11 +24,33 @@ import {
 import { tr } from './messages'
 
 const langAtom = atom({ plugin: 'takgon-mods', key: 'lang' } as const, 'ko')
+const notifiedAtom = atom({ plugin: 'takgon-mods', key: 'notified' } as const, [])
 const modulesAtom = atom({ plugin: 'takgon-mods', key: 'modules' } as const, ALL_ON)
 const prAtom = atom({ plugin: 'takgon-mods', key: 'pr' } as const, null)
 const tasksAtom = atom({ plugin: 'takgon-mods', key: 'tasks' } as const, [])
 const coachOnAtom = atom({ plugin: 'takgon-mods', key: 'coachOn' } as const, true)
 const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
+
+/**
+ * 명령을 등록한다. 같은 이름의 사용자·내장 명령 때문에 거부되면 예외를 삼켜 다른 초기화(이 모듈과 뒤쪽 모듈)를 막지 않고,
+ * 명령마다 세션당 1회 toast로 알린다. `$`는 import 경계를 넘을 수 없어 모듈 파일마다 같은 헬퍼를 둔다.
+ */
+const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<void> => {
+  try {
+    await $.command.register(spec)
+  } catch (error) {
+    try {
+      const marked = markNotified(await read($, notifiedAtom), registerCause(spec.name))
+      if (marked !== null) {
+        await update($, notifiedAtom, () => marked)
+        const vars = { name: spec.name, reason: refusalReason(error) }
+        $.ui.toast(t(await read($, langAtom), 'mods.registerRefused', vars))
+      }
+    } catch {
+      // 알림 실패도 초기화를 막지 않는다.
+    }
+  }
+}
 
 /** 코치 on/off 전역 store 키. */
 const COACH_KEY = globalKey('m4', 'coach')
@@ -180,11 +204,11 @@ export const registerComposer = (on: On): void => {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
     await ensureRestored($)
     const lang = await read($, langAtom)
-    await $.command.register({
+    await registerCommand($, {
       name: 'coach',
       description: tr(lang, 'coach.description'),
       argumentHint: '[on|off]',
-    }).catch(() => undefined)
+    })
     return next(e)
   })
 
