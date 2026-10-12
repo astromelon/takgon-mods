@@ -7,8 +7,11 @@
 
 ### Changed
 - `tools/e2e` 화면 판정을 가상 터미널(pyte) 재구성 방식으로 변경. TUI 차분 렌더 때문에 원시 출력에서 빠지던 줄(예: `/issue` 검색 결과 제목·첫 행)도 판정된다. `linear_issue` 판정을 원래의 엄격한 형태로 되돌림.
+- `tools/e2e` 시나리오 `mods_status`: 거부 toast 판정을 사유 문구 전체(`it is the user's /browse`)로 엄격하게 변경.
 
 ### Added
+- GitHub Actions CI(`.github/workflows/ci.yml`): `tools/e2e` 하네스 단위 테스트 및 probe 시나리오 3개(`probe_classic`, `probe_catch`, `probe_clear_state`) 실행 단계 추가.
+- `tools/e2e/test_harness.py`: 하네스의 가상 터미널(pyte) 화면 재구성·dirty 줄 수집 및 비표준 CSI(kitty 등) 필터에 대한 단위 테스트 추가.
 - `tools/e2e` 시나리오 `linear_issue`: 실제 Linear API로 `/issue` 검색·연결·중복 연결·해제 확인. 하네스가 새 셸을 열지 않아도 사용자 환경변수를 레지스트리에서 읽어 하위 세션에 넘긴다(`user_env`).
 
 ## [0.4.0] - 2026-10-12
