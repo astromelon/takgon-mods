@@ -1,0 +1,76 @@
+name: probe_classic experiment
+
+# 수동 실행 전용 실험: managed settings가 있으면 cc-plugin-sec-default가 맨 바깥에 놓여
+# classic.* 훅 bypass(docs/engine-constraints.md 1번)가 CI 러너에서도 재현되는지 확인한다.
+# 대조군(처치 전)과 실험군(managed-settings.json 생성 후)의 probe_classic 결과·seat 줄을 비교한다.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  experiment:
+    name: managed settings 유무에 따른 probe_classic
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      DISABLE_AUTOUPDATER: '1'
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.296
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install e2e dependencies
+        run: pip install -r tools/e2e/requirements.txt
+
+      - name: Control - probe_classic without managed settings
+        id: control
+        continue-on-error: true
+        run: python tools/e2e/run.py probe_classic
+
+      - name: Control - seat lines
+        if: always()
+        continue-on-error: true
+        run: |
+          Get-ChildItem tools/e2e/logs -Filter "*.debug.log" | ForEach-Object {
+            "== $($_.Name)"
+            Select-String -Path $_.FullName -Pattern "seated|sec-default|CLASSIC-PROBE|classic-probe: classic" | ForEach-Object { $_.Line }
+          }
+          Remove-Item tools/e2e/logs -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Treatment - create managed-settings.json
+        run: |
+          New-Item -ItemType Directory -Force "C:\Program Files\ClaudeCode" | Out-Null
+          Set-Content "C:\Program Files\ClaudeCode\managed-settings.json" "{}" -Encoding utf8
+          Get-Item "C:\Program Files\ClaudeCode\managed-settings.json" | Select-Object FullName, Length
+
+      - name: Treatment - probe_classic with managed settings
+        id: treatment
+        continue-on-error: true
+        run: python tools/e2e/run.py probe_classic
+
+      - name: Treatment - seat lines
+        if: always()
+        continue-on-error: true
+        run: |
+          Get-ChildItem tools/e2e/logs -Filter "*.debug.log" | ForEach-Object {
+            "== $($_.Name)"
+            Select-String -Path $_.FullName -Pattern "seated|sec-default|CLASSIC-PROBE|classic-probe: classic" | ForEach-Object { $_.Line }
+          }
+
+      - name: Summary
+        if: always()
+        run: |
+          "control   probe_classic: ${{ steps.control.outcome }}"
+          "treatment probe_classic: ${{ steps.treatment.outcome }}"
