@@ -19,6 +19,7 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
 | 6 | `$.model.fork`에 시간 상한 옵션이 없음 | API 공백 | 타입 선언 | 낮음 | `$.clock.after`로 분리 |
 | 7 | 테스트 킷의 엔진 응답 규약이 문서에 없음 | 문서 공백 | 테스트 킷 | 낮음 | 테스트 헬퍼 |
 | 8 | (외부) mermaid-cli SVG가 `Svg` 한도를 넘음 | 서드파티 | 실측 | 낮음 | 폰트 블록 제거 |
+| 9 | 사용자·프로젝트 스킬과 이름이 겹친 명령 등록 거부가 3번과 겹쳐 초기화가 연쇄 실패 | 엔진 동작·문서 공백 | 실측 | 높음 | 등록 예외 격리 + 거부 toast, 명령 이름 변경 |
 
 ---
 
@@ -171,6 +172,37 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
 - **대응**: 표시할 때만 `@font-face` style 블록 제거 → 29,999자(`b07f40b`).
 
 ---
+
+## 9. 스킬과 이름이 겹친 명령 등록 거부가 3번과 겹쳐 초기화가 연쇄 실패
+
+- **분류**: 엔진 동작 / 문서 공백 · **근거**: 실측(대화형 세션 debug 로그, `.catch` 계측) · **심각도**: 높음
+- **현상**: 사용자 스킬 `~/.claude/skills/handoff`가 있는 환경에서 M7이 `/handoff`를 등록하면 엔진이 거부한다.
+  M7의 `session.start` 훅은 `.catch(($, e, next) => next(e))`를 달고 있었다. 그래서 3번 동작대로 같은 플러그인의 뒤쪽
+  `session.start` 훅(M2 `/browse`, M3 `/edit`, M5 `/issue` 등록)이 모두 건너뛰어졌다. 사용자는 `/browse`가 "Unknown command"로만 보였다.
+- **근거**:
+  - debug 로그: `/mods`·`/coach`·`/panel`·`/pin`만 `listed`, 이어서
+    `[WARN] hook failed closed: takgon-mods: errorKind=HooksError errorChars=78 (session.start; its .catch answered)`.
+    로그에는 오류 길이만 남아 원인을 알 수 없었다.
+  - `.catch`에 `$.ui.log(next.error.message)`를 넣어 계측한 결과:
+    ```
+    M7-DIAG kind=throw msg=takgon-mods: $.command.register: "/handoff" refused: it is the user's /handoff
+    ```
+  - 테스트 프로젝트에 `.claude/skills/browse/SKILL.md`(프로젝트 스킬)를 두어도 `/browse`가 같은 문구로 거부된다.
+    엔진은 프로젝트 스킬이어도 사유를 "user's"로 표시한다.
+- **추가 관찰(조건 불명)**: 같은 사용자 스킬이 있는데도 앞선 한 대화형 세션에서는 `/handoff`가 등록돼 플러그인 명령이 응답했다.
+  어떤 조건에서 거부되는지(스킬 로드 순서 등)는 확인하지 못했다.
+- **문서 공백**: `command.register` 문서는 "a built-in's name is refused"만 언급한다. 사용자·프로젝트 스킬과 명령도 거부 대상이라는
+  점과 그 사유 문구는 문서에 없다. validate는 실행 환경의 스킬을 모르므로 미리 잡지 못한다.
+- **영향**: 플러그인 설치자의 개인 스킬 이름에 따라 플러그인 일부가 조용히 사라진다. 3번과 겹치면 충돌한 모듈과 무관한 모듈까지 함께 사라진다.
+- **대응**(`3ab55e0`, `26a7ce3`):
+  - 모든 `$.command.register`를 모듈 파일의 헬퍼로 감싸 거부를 삼킨다. 다른 초기화는 계속된다.
+  - 거부된 명령은 이름과 사유를 명령마다 세션당 1회 toast로 알린다.
+  - M7 명령 이름을 `/tk-handoff`로 바꿨다.
+  - 회귀 테스트 `tests/integration.test.tsx`를 추가했다. 테스트 킷에서 엔진 거부는 `{ deny }`로 답해야 사유가 전달된다.
+- **제안**:
+  - (a) `command.register` 문서와 `CommandSpec`에 "사용자·프로젝트 명령·스킬과 같은 이름도 거부"를 명시.
+  - (b) debug 로그의 `hook failed closed` 줄에 오류 메시지(최소한 앞부분)를 남겨, 계측 없이 원인을 알 수 있게.
+  - (c) 거부 사유 문구가 스킬 출처(user/project)를 구분하도록.
 
 ## 기타 관찰(이슈 아님)
 
