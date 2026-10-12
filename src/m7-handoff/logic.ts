@@ -17,8 +17,18 @@ export const MAX_SUFFIX = 99
 const MAX_REFS = 30
 
 /** 사용률이 임계치 이상이고 이번 세션에 아직 만들지 않았으면 true. */
-export const shouldTrigger = (percent: number | undefined, isFired: boolean): boolean =>
-  !isFired && percent !== undefined && percent >= HANDOFF_THRESHOLD
+export const shouldTrigger = (
+  percent: number | undefined,
+  isFired: boolean,
+  threshold: number = HANDOFF_THRESHOLD,
+): boolean => !isFired && percent !== undefined && percent >= threshold
+
+/** 유효한 임계치인지: 1~99 정수. */
+const isThreshold = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 99
+
+/** 저장된 임계치. 없거나 범위 밖이면 기본 75. */
+export const toThreshold = (value: unknown): number => (isThreshold(value) ? value : HANDOFF_THRESHOLD)
 
 const pad = (value: number): string => String(value).padStart(2, '0')
 
@@ -89,13 +99,25 @@ export const buildForkPrompt = (lang: Lang, refs: HandoffRefs): string => {
   ].join('\n')
 }
 
-/** `/handoff` 인자 해석. */
-export type HandoffAction = 'create' | 'show' | 'load' | 'usage'
+/** `/handoff` 인자 해석. `threshold`의 value가 null이면 현재 값 보기. */
+export type HandoffAction =
+  | 'create'
+  | 'show'
+  | 'load'
+  | 'usage'
+  | { kind: 'threshold'; value: number | null }
 
 export const parseHandoffArgs = (args: string): HandoffAction => {
-  const word = args.trim().toLowerCase()
+  const [word = '', value, ...rest] = args.trim().toLowerCase().split(/\s+/).filter(Boolean)
   if (word === '') {
     return 'create'
   }
-  return word === 'show' || word === 'load' ? word : 'usage'
+  if (word === 'threshold' && rest.length === 0) {
+    if (value === undefined) {
+      return { kind: 'threshold', value: null }
+    }
+    const number = /^\d+$/.test(value) ? Number(value) : Number.NaN
+    return isThreshold(number) ? { kind: 'threshold', value: number } : 'usage'
+  }
+  return (word === 'show' || word === 'load') && value === undefined ? word : 'usage'
 }

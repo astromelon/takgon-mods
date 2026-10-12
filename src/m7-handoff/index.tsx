@@ -3,7 +3,7 @@ import type { EngineInterface, On } from 'claude-code'
 
 import type { HandoffInfo, Lang } from '../../types'
 import { toLang } from '../shared/i18n'
-import { projectId, projectKey } from '../shared/keys'
+import { globalKey, projectId, projectKey } from '../shared/keys'
 import { LANG_KEY, MODULES_KEY, OUTPUT_GITIGNORE, outputDir, toFlags } from '../shared/settings'
 import { ALL_ON } from '../shared/state'
 import {
@@ -16,6 +16,7 @@ import {
   shouldTrigger,
   summarize,
   toHandoffInfo,
+  toThreshold,
 } from './logic'
 import { tr } from './messages'
 
@@ -127,12 +128,15 @@ const start = async ($: EngineInterface): Promise<void> => {
   await $.command.register({
     name: 'handoff',
     description: tr(lang, 'cmd.description'),
-    argumentHint: '[show | load]',
+    argumentHint: '[show | load | threshold <1-99>]',
   })
   await ensureRestored($)
 }
 
 /** `/handoff [show|load]` 처리. */
+/** 자동 인수인계 임계치(컨텍스트 %) 전역 store 키. 없으면 75. */
+const THRESHOLD_KEY = globalKey('m7', 'threshold')
+
 const runCommand = async ($: EngineInterface, args: string): Promise<string> => {
   const lang = await read($, langAtom)
   if (!(await isOn($))) {
@@ -141,6 +145,13 @@ const runCommand = async ($: EngineInterface, args: string): Promise<string> => 
   const action = parseHandoffArgs(args)
   if (action === 'usage') {
     return tr(lang, 'cmd.usage')
+  }
+  if (typeof action === 'object') {
+    if (action.value !== null) {
+      await $.store.set(THRESHOLD_KEY, action.value)
+    }
+    const value = action.value ?? toThreshold(await $.store.get(THRESHOLD_KEY))
+    return tr(lang, 'cmd.threshold', { value })
   }
   if (action === 'create') {
     const result = await generate($)
@@ -170,7 +181,8 @@ const autoHandoff = async ($: EngineInterface): Promise<void> => {
     return
   }
   const usage = await $.session.usage()
-  if (!shouldTrigger(usage.context.percent, false)) {
+  const threshold = toThreshold(await $.store.get(THRESHOLD_KEY))
+  if (!shouldTrigger(usage.context.percent, false, threshold)) {
     return
   }
   await update($, firedAtom, () => true)
