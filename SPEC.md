@@ -32,15 +32,20 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
 - `$.state`를 쓰므로 `types/index.d.ts` 계약이 필수이며, `claude plugin validate`가 `$.state` 키를 이 계약과 대조한다.
 
 # 런타임 제약 (반드시 준수)
-- **모듈 초기화 규칙 [수정: validate 확인]**: matcher 없는 `session.start`·`classic.SessionStart`는 각각 플러그인 전체에서
-  하나만 허용된다(core가 사용). 각 모듈은 `on('session.start', { isInteractive: true }, ...)`로 초기화하고(`-p` 실행에서는
-  돌지 않음), `/clear`·`/resume` 복원은 `on('classic.SessionStart', { source: 'clear' }, ...)`/`{ source: 'resume' }` +
-  `.catch(($, e, next) => next(e))`로 한다.
+- **모듈 초기화 규칙 [수정: validate 확인]**: matcher 없는 `session.start`는 플러그인 전체에서
+  하나만 허용된다(core가 사용). 각 모듈은 `on('session.start', { isInteractive: true }, ...)`로 초기화한다(`-p` 실행에서는
+  돌지 않음).
+  **`/clear`·`/resume` 복원 [수정: 실측]**: `classic.*` 훅은 user 플러그인에서 전부 bypass되므로 쓰지 않는다
+  (engine-constraints 1). `/clear` 뒤에는 `$.state`가 비고 `session.start`도 오지 않으므로(engine-constraints 2),
+  `restored` state에 복원한 모듈 이름을 기록하고, 각 모듈의 `ensureRestored`가 자기 훅(core는 `prompt.submit`·
+  `command.run`, 각 모듈은 프롬프트·명령·턴 완료·측정 훅)에 처음 들어올 때 이름이 없으면 store에서 다시 채운다.
+  복원 실패는 훅 안에서 삼키고 표시를 되돌려 다음 진입에서 재시도한다(engine-constraints 3).
 - 외부 접근은 `$`로만 한다: `$.fs`, `$.http`, `$.process`, `$.clock`, `$.model`, `$.ui`, `$.store`, `$.state`,
   `$.session`, `$.command`, `$.prompt`, **`$.env`** **[추가]**.
   setTimeout, fetch, Node API, 동적 import()는 사용하지 않는다.
 - `$`를 alias하거나 구조분해하지 않는다. 이벤트명은 리터럴로 쓴다. matcher 없는 session.start는 하나만 둔다
-  (`src/index.ts`에서 한 번 받아 각 모듈의 init으로 분배).
+  **[수정: 실측]** (`src/core.ts`의 `registerCore`가 갖는다. `src/index.ts`는 각 모듈의 `register*(on)`을 호출만 하고,
+  모듈은 자기 파일에서 `{ isInteractive: true }` matcher로 등록한다. engine-constraints 4).
 - **`$`는 import 경계를 넘겨 전달할 수 없다** **[추가: shared 구현 중 validate로 확인]**. `$`를 받는 헬퍼는
   같은 파일 최상위에 선언한 함수(또는 함수를 담은 const)여야 한다. 따라서 `src/shared/`에는 순수 함수·상수·타입만 두고,
   store·state·ui 호출은 각 모듈 파일 안에서 한다. `on`은 import한 함수로 넘겨도 된다.
@@ -59,7 +64,8 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
 # 저장소 규칙 **[수정]**
 - `$.state`: 세션 UI 상태(핫 리로드에도 유지). 세션 시작 시 `$.store`로부터 복원한다.
   - 최초 시작: `session.start`. `/clear`는 `session.end(reason:'clear')` 후 **`session.start`가 다시 오지 않으므로**
-    `classic.SessionStart`(source `clear`/`resume`/`compact`)에서 복원한다.
+    **[수정: 실측]** `classic.SessionStart`는 user 플러그인에 전달되지 않으므로(engine-constraints 1·2), `restored`
+    state가 비어 있으면 각 모듈이 자기 훅에 처음 들어올 때 store에서 지연 복원한다(`ensureRestored`).
 - `$.store`: 이 플러그인 전용 JSON 파일(다른 플러그인과 공유되지 않음)이지만 **모든 프로젝트가 공유**한다.
   - 키 형식: `p/{projectId}/{module}/{key}`, 전역 키는 `g/{module}/{key}`.
   - `projectId` = `$.session.root()` 정규화(소문자·`/` 구분자) 후 짧은 해시(예: FNV-1a 8자).
