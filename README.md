@@ -171,9 +171,15 @@ Host key verification failed.
    ```
 
    PowerShell은 같은 값을 먼저 `$env:GIT_CONFIG_COUNT=1; $env:GIT_CONFIG_KEY_0="url.https://github.com/.insteadOf";
-   $env:GIT_CONFIG_VALUE_0="git@github.com:"`로 설정한 뒤 명령을 실행한다(PowerShell 문법은 확인하지 못했다).
-2. 호스트 키를 한 번 등록한다. `ssh -T git@github.com`을 실행해 나오는 지문이 [GitHub 공개 SSH 키 지문](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints)과
-   같으면 `yes`로 답한다. 이후에는 이 오류가 나지 않는다(이 방법은 실행해 보지 않았다).
+   $env:GIT_CONFIG_VALUE_0="git@github.com:"`로 설정한 뒤 명령을 실행한다(`git ls-remote`로 SSH 주소가 HTTPS로 바뀌어
+   성공하는 것을 확인했다. `claude plugin update` 전체를 PowerShell로 돌려 보지는 않았다).
+2. 호스트 키를 한 번 등록한다. `ssh -T git@github.com`을 실행하면 `ED25519 key fingerprint is: SHA256:...`이 나오는데,
+   [GitHub 공개 SSH 키 지문](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints)의
+   ED25519 값(`SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`)과 같으면 `yes`로 답한다. 이후 같은 명령은 확인 창 없이 지나간다.
+   **GitHub에 SSH 키를 등록해 둔 PC에서만 해결된다.** 키가 없으면 호스트 키는 등록돼도 마지막 줄이
+   `git@github.com: Permission denied (publickey).`로 끝나고, SSH 클론은 이번엔 이 오류로 실패한다. 키가 없는 PC는 1번을 쓴다.
+   (임시 `known_hosts`로 이 PC에서 확인한 것은 지문 표시·`yes` 후 등록·재실행 시 확인 창 없음·키가 없을 때 `publickey` 오류까지다.
+   SSH 키가 있는 환경에서 `plugin update`가 성공하는 것까지는 확인하지 못했다.)
 
 ### 새 버전 배포 절차(저장소 관리자)
 
