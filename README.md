@@ -50,24 +50,32 @@ Claude Code용 개인 생산성 mods 플러그인. 모듈 8개를 한 플러그�
 
 ## 설치
 
-저장소(`astromelon/takgon-mods`)는 public이라 별도 인증 없이 설치할 수 있다.
+저장소는 public이라 별도 인증 없이 설치할 수 있다. 마켓플레이스는 파일 1개짜리 별도 저장소
+[`astromelon/takgon-marketplace`](https://github.com/astromelon/takgon-marketplace)이고, 플러그인 본체는 이 저장소
+(`astromelon/takgon-mods`)다. 마켓플레이스를 분리한 이유는 아래 EPERM 항목을 본다.
 
 Claude Code 터미널 세션의 프롬프트에서:
 
 ```
-/plugin install takgon-mods --marketplace astromelon/takgon-mods
+/plugin install takgon-mods --marketplace astromelon/takgon-marketplace
 ```
 
 `Add marketplace?`에 `y`, 설치 범위는 user(모든 프로젝트)를 고른다. CLI로는:
 
 ```bash
-claude plugin marketplace add astromelon/takgon-mods
+claude plugin marketplace add astromelon/takgon-marketplace
 claude plugin install takgon-mods@takgon
 ```
 
+이전에 `astromelon/takgon-mods`를 마켓플레이스로 등록했다면 이름이 같은 `takgon`이라 그대로 동작하고 업데이트도 된다.
+EPERM이 나던 PC는 `claude plugin marketplace remove takgon` 후 위 명령으로 다시 등록한다(설치된 플러그인도 함께
+제거되므로 `install`을 다시 한다).
+
 ### `marketplace add`가 EPERM으로 실패할 때
 
-일부 Windows PC에서 아래 오류로 add가 실패한다.
+파일이 많은 저장소(옛 `astromelon/takgon-mods` 마켓플레이스 소스)를 add하면 일부 Windows PC에서 아래 오류로 실패했다.
+마켓플레이스를 파일 1개짜리 저장소로 분리한 뒤에는 임시 환경 실험(5회)에서 add·install이 모두 성공했다.
+그래도 아래 오류가 나면 다음을 따른다.
 
 ```
 Failed to finalize marketplace cache ... EPERM: operation not permitted, rename '...\astromelon-takgon-mods' -> '...\takgon'
