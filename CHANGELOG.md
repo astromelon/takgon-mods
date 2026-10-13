@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-13
+
 ### Changed
 - 설치용 마켓플레이스를 파일 1개짜리 별도 저장소 `astromelon/takgon-marketplace`로 분리하고 README 설치 안내를 바꿈. Windows에서 `marketplace add`가 EPERM rename으로 실패하던 문제(#1)를 피하기 위한 것이다. 마켓플레이스 이름 `takgon`은 그대로라 기존 설치도 동작한다. 이 저장소의 `.claude-plugin/marketplace.json`은 개발용 로컬 소스를 위해 유지한다.
 
