@@ -71,6 +71,14 @@ claude plugin install takgon-mods@takgon
 EPERM이 나던 PC는 `claude plugin marketplace remove takgon` 후 위 명령으로 다시 등록한다(설치된 플러그인도 함께
 제거되므로 `install`을 다시 한다).
 
+> **주의: 마켓플레이스 소스를 바꾸거나 `marketplace remove`를 하기 전에 store를 백업한다.**
+> 핀(`/panel`)·M5 연결 이슈·M4 작업 목록·M7 인수인계 같은 저장 데이터는 `~/.claude/plugins/store/`의
+> `takgon-mods_<마켓플레이스 이름>-<해시>.json` 한 파일에 들어 있다. 파일명은 플러그인 ID(`takgon-mods@takgon`)로만
+> 정해지므로, 마켓플레이스 **이름**이 `takgon`으로 같으면 소스(로컬 디렉터리 → GitHub)나 경로가 바뀌어도 같은 파일을
+> 쓴다. 이름을 바꾸면 다른 파일이 되어 기존 데이터를 읽지 못한다. 플러그인을 제거할 때 파일이 지워지는지는 확인하지
+> 못했다. 절차는 아래 [마켓플레이스 전환 전 store 백업·복원](#마켓플레이스-전환-전-store-백업복원)을 따른다.
+> 토큰(`GITHUB_TOKEN`, `LINEAR_API_KEY`)은 store에 저장하지 않고 환경변수로만 읽으므로 영향이 없다.
+
 ### `marketplace add`가 EPERM으로 실패할 때
 
 파일이 많은 저장소(옛 `astromelon/takgon-mods` 마켓플레이스 소스)를 add하면 일부 Windows PC에서 아래 오류로 실패했다.
@@ -94,6 +102,38 @@ Failed to finalize marketplace cache ... EPERM: operation not permitted, rename 
    claude plugin install takgon-mods@takgon
    ```
 3. 백신의 실시간 검사 예외에 Claude 설정 폴더(`~/.claude/plugins`)를 넣으면 해결될 수 있다(확인하지 못한 추정).
+
+### 마켓플레이스 전환 전 store 백업·복원
+
+마켓플레이스 소스를 바꾸거나 `marketplace remove`·플러그인 `uninstall`을 하기 전에 한다. 저장 데이터(핀, M5 연결 이슈,
+M4 작업 목록, M7 인수인계 등)는 `~/.claude/plugins/store/` 안의 `takgon-mods_<마켓플레이스 이름>-<해시>.json` 한 파일이다.
+파일명의 해시는 `sha256("<플러그인>@<마켓플레이스 이름>")`의 앞 12자리다(`takgon-mods@takgon` → `2488473fd961`, 이 PC에서
+일치 확인). 소스나 경로는 해시에 들어가지 않으므로 이름이 `takgon`인 채로 소스만 바꾸는 전환은 파일명이 그대로다. 이름을 바꿀
+때만 아래 3번의 "파일명이 다르다" 경우가 된다.
+
+**백업** (열린 세션을 모두 닫은 뒤)
+
+```powershell
+$store = "$env:USERPROFILE\.claude\plugins\store"
+$bak = "$env:USERPROFILE\.claude\backup-takgon-store-$(Get-Date -Format yyyyMMdd-HHmm)"
+New-Item -ItemType Directory $bak | Out-Null
+Copy-Item "$store\takgon-mods_*.json" $bak
+Get-ChildItem $bak   # 파일이 보이는지 확인
+```
+
+**전환 후 확인**
+
+1. 전환(`marketplace add` → `plugin install`)을 마치고 Claude Code를 새로 시작한다.
+2. `/panel`의 핀·할 일 등 저장 데이터가 남아 있는지 본다. 남아 있으면 끝이다. 백업은 며칠 두었다가 지운다.
+3. 비어 있으면 세션을 모두 닫고 `~/.claude/plugins/store/`를 확인한다. 엔진이 열려 있는 동안 파일을 덮어쓸 수 있어
+   세션을 연 채 복사하지 않는다.
+   - **파일명이 백업과 같다**: 백업 파일을 그대로 덮어 복사한다.
+   - **파일명이 다르다**(마켓플레이스 이름을 바꿔 해시가 달라진 경우): 새 파일이 이미 만들어졌다면 백업 파일을 **새 파일명으로** 복사한다.
+     새 파일에만 있는 데이터는 사라지므로 덮어쓰기 전에 새 파일도 따로 복사해 둔다.
+4. 세션을 다시 열어 데이터가 보이는지 확인한다.
+
+store 파일은 JSON 하나이며 4 MiB 상한이 있다. 키는 `g/<모듈>/<키>`(전역)와 `p/<프로젝트 해시>/<모듈>/<키>`(프로젝트)다.
+프로젝트 해시는 프로젝트 루트 경로로 정해지므로 경로가 바뀐 프로젝트의 데이터는 복원해도 새 경로에서 보이지 않는다.
 
 ### 업데이트
 
