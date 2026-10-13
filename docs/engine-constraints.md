@@ -242,4 +242,10 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
 - `claude -p`(비대화형)는 `session.start`의 `isInteractive`가 false라, takgon-mods 모듈 초기화(명령 등록 등)가 돌지 않는다. 설계상 의도다.
 - Git Bash에서 `claude -p "/mods"`를 실행하면 MSYS가 `/mods`를 경로(`C:/Program Files/Git/mods`)로 바꾼다.
   `MSYS_NO_PATHCONV=1`이 필요하다(엔진 문제 아님).
+- `$.store` 파일은 `~/.claude/plugins/store/{플러그인}_{마켓플레이스 이름}-{해시}.json`이고, 해시는
+  `sha256("{플러그인}@{마켓플레이스 이름}")`의 앞 12자리다(`takgon-mods@takgon` → `2488473fd961`, 근거: 실측 — 이 PC의 파일명과
+  일치, 다른 플러그인으로는 교차 검증하지 못함). 소스(로컬 디렉터리·GitHub)와 경로는 들어가지 않으므로 마켓플레이스 이름이 같으면
+  소스를 바꿔도 같은 파일을 쓴다. 임시 `CLAUDE_CONFIG_DIR`에서 `uninstall` → `marketplace remove` → GitHub 소스로 `add` →
+  `install`을 거쳐도 파일과 내용이 유지됐다(근거: 실측, 센티널 파일로 CLI 동작만 확인). 마켓플레이스 이름이 바뀔 때 파일이
+  갈라지는지는 세션까지 돌려 확인하지 못했다(근거: 추정, 해시 규칙에 따른 것).
 - 설치 직후 이미 떠 있는 세션은 새 PATH를 보지 못해, 설치한 CLI(gh 등)를 `$.process.run`이 찾지 못한다.
