@@ -404,14 +404,14 @@ describe('/issue 명령', () => {
     engine(on, () => NO_PR)
     linear(on, requests)
     mock.store(on)
-    mock.env(on, { LINEAR_API_KEY: 'lin_api_SECRET' })
+    mock.env(on, { LINEAR_API_KEY: 'lin_api_FAKE_TEST_KEY_NOT_REAL' })
 
     const out = await issue($, '버그')
 
     expect(requests[0]?.variables).toEqual({ term: '버그', first: 10 })
     expect(out.text).toContain(tr('ko', 'issue.searchTitle', { q: '버그', count: 2 }))
     expect(out.text).toContain('ENG-2 [In Progress] 검색 개선')
-    expect(out.text).not.toContain('SECRET')
+    expect(out.text).not.toContain('FAKE_TEST_KEY')
   })
 
   test('link는 store에 영속화되고 복원 후 목록에 나온다', async ($, on) => {
@@ -420,7 +420,7 @@ describe('/issue 명령', () => {
     engine(on, () => NO_PR)
     linear(on)
     memStore(on, sets)
-    mock.env(on, { LINEAR_API_KEY: 'lin_api_SECRET' })
+    mock.env(on, { LINEAR_API_KEY: 'lin_api_FAKE_TEST_KEY_NOT_REAL' })
     await $.session.start(START)
     await clock.settle()
 
@@ -436,7 +436,7 @@ describe('/issue 명령', () => {
 
     const saved = sets.filter(one => one.key === LINKED_KEY)
     expect(saved).toHaveLength(1)
-    expect(JSON.stringify(saved)).not.toContain('SECRET')
+    expect(JSON.stringify(saved)).not.toContain('FAKE_TEST_KEY')
 
     const listed = await issue($, '')
     expect(listed.text).toContain('ENG-1 [Todo] 로그인 버그')
