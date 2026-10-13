@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-13
+
 ### Added
 - `tools/release.mjs`: `plugin.json` 버전 올림과 CHANGELOG `[Unreleased]` 정리, 커밋·push를 자동화. `--check`는 두 버전의 일치를 검사하며 CI에서 실행한다.
 - README: 업데이트(marketplace update → plugin update) 방법과 새 버전 배포 절차.

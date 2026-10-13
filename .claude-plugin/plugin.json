@@ -1,6 +1,6 @@
 {
   "name": "takgon-mods",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "개인 생산성 mods: i18n, PR/Linear 연동, 작업 패널, 자동 인수인계 등 8개 모듈",
   "author": { "name": "tglee" },
   "types": "./types/index.d.ts"
