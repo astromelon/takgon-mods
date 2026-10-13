@@ -89,8 +89,32 @@ type World = {
 /** 엔진은 Windows에서 fs 경로를 역슬래시로 바꿔 넘기므로 비교용으로 `/`로 맞춘다. */
 const slash = (path: string): string => path.replace(/\\/g, '/')
 
+/** 쓰기를 기록하는 메모리 store. `store.set`은 한 번만 등록할 수 있어 mock.store 대신 쓴다. */
+const recordingStore = (
+  on: On,
+  sets: { key: string; value: unknown }[],
+  initial: Record<string, unknown> = {},
+): void => {
+  const data = new Map<string, unknown>(Object.entries(initial))
+  on('store.get', ($, e) => ({ value: data.get(e.key) }))
+  on('store.set', ($, e) => {
+    sets.push({ key: e.key, value: e.value })
+    data.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('store.delete', ($, e) => {
+    data.delete(e.key)
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: [...data.keys()] }))
+}
+
 /** 엔진 자리: 세션·루트·사용량·fork·fs·toast·턴/프롬프트 바닥을 메모리로 답한다. */
-const engine = (on: On, store: Record<string, unknown> = {}): World => {
+const engine = (
+  on: On,
+  store: Record<string, unknown> = {},
+  sets?: { key: string; value: unknown }[],
+): World => {
   const world: World = {
     files: new Map(),
     toasts: [],
@@ -126,7 +150,11 @@ const engine = (on: On, store: Record<string, unknown> = {}): World => {
     world.context.push(e.context)
     return { text: e.text, context: e.context }
   })
-  mock.store(on, store)
+  if (sets === undefined) {
+    mock.store(on, store)
+  } else {
+    recordingStore(on, sets, store)
+  }
   return world
 }
 
@@ -250,5 +278,26 @@ describe('/clear 뒤 복원', () => {
     await $.prompt.submit({ text: '이어서 작업', wait: false, origin: { kind: 'composer' } })
 
     expect(world.toasts.join('\n')).toContain('/tk-handoff load')
+  })
+})
+
+describe('빈 store 첫 사용', () => {
+  test('읽기는 쓰지 않고, 임계치 설정과 첫 생성이 각자의 키를 만든다', async ($, on) => {
+    const sets: { key: string; value: unknown }[] = []
+    engine(on, {}, sets)
+    mock.clock(on, { now: new Date(2026, 9, 12, 9, 5).getTime() })
+    await $.session.start(START)
+
+    expect((await $.command.run({ command: 'tk-handoff', args: 'threshold', ...RUN })).text).toContain('75%')
+    await $.command.run({ command: 'tk-handoff', args: 'show', ...RUN })
+    expect(sets.filter(one => one.key.startsWith('g/m7/') || one.key.startsWith('p/b1a59c26/m7/'))).toHaveLength(0)
+
+    await $.command.run({ command: 'tk-handoff', args: 'threshold 20', ...RUN })
+    expect(sets.filter(one => one.key === 'g/m7/threshold')).toEqual([{ key: 'g/m7/threshold', value: 20 }])
+
+    await $.command.run({ command: 'tk-handoff', args: '', ...RUN })
+    const saved = sets.filter(one => one.key === 'p/b1a59c26/m7/latest')
+    expect(saved).toHaveLength(1)
+    expect(saved[0]?.value).toMatchObject({ path: `${DIR}/handoff/20261012-0905.md` })
   })
 })
