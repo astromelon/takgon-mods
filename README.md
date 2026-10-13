@@ -71,13 +71,14 @@ claude plugin install takgon-mods@takgon
 EPERM이 나던 PC는 `claude plugin marketplace remove takgon` 후 위 명령으로 다시 등록한다(설치된 플러그인도 함께
 제거되므로 `install`을 다시 한다).
 
-> **주의: 마켓플레이스 소스를 바꾸거나 `marketplace remove`를 하기 전에 store를 백업한다.**
+> **주의: 마켓플레이스 이름을 바꾸거나 store 파일을 직접 만지기 전에는 store를 백업한다.** 이름이 `takgon`인 채로
+> 소스를 바꾸거나 `marketplace remove` → `add`를 하는 전환은 백업이 필수는 아니지만, 해두면 안전하다.
 > 핀(`/panel`)·M5 연결 이슈·M4 작업 목록·M7 인수인계 같은 저장 데이터는 `~/.claude/plugins/store/`의
 > `takgon-mods_<마켓플레이스 이름>-<해시>.json` 한 파일에 들어 있다. 파일명은 플러그인 ID(`takgon-mods@takgon`)로만
 > 정해지므로, 마켓플레이스 **이름**이 `takgon`으로 같으면 소스(로컬 디렉터리 → GitHub)나 경로가 바뀌어도 같은 파일을
 > 쓴다. 이름을 바꾸면 다른 파일이 되어 기존 데이터를 읽지 못한다. `uninstall`·`marketplace remove`는 이 파일을
 > 지우지 않는다(임시 환경에서 `uninstall` → `remove` → GitHub 소스로 `add` → `install` 뒤에도 파일과 내용이 그대로인 것을
-> 확인했다). 그래도 이름을 바꾸는 전환에 대비해 절차는 아래 [마켓플레이스 전환 전 store 백업·복원](#마켓플레이스-전환-전-store-백업복원)을 따른다.
+> 확인했다. 엔진이 만든 파일이 아니라 같은 이름의 센티널 파일로 CLI 동작만 본 것이고, 세션을 돌린 검증은 아니다). 그래도 이름을 바꾸는 전환에 대비해 절차는 아래 [마켓플레이스 전환 전 store 백업·복원](#마켓플레이스-전환-전-store-백업복원)을 따른다.
 > 토큰(`GITHUB_TOKEN`, `LINEAR_API_KEY`)은 store에 저장하지 않고 환경변수로만 읽으므로 영향이 없다.
 
 ### `marketplace add`가 EPERM으로 실패할 때
