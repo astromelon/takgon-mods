@@ -65,6 +65,28 @@ claude plugin marketplace add astromelon/takgon-mods
 claude plugin install takgon-mods@takgon
 ```
 
+### `marketplace add`가 EPERM으로 실패할 때
+
+일부 Windows PC에서 아래 오류로 add가 실패한다.
+
+```
+Failed to finalize marketplace cache ... EPERM: operation not permitted, rename '...\astromelon-takgon-mods' -> '...\takgon'
+```
+
+저장소는 이미 받아졌고, 폴더 이름을 바꾸는 순간 다른 프로세스(실시간 검사 백신 등으로 추정)가 폴더 안 파일을 잡고 있어서
+난다. 항상 재현되지는 않는다. 아래 순서로 대처한다.
+
+1. 같은 명령을 한 번 더 실행한다. 타이밍에 따라 성공하기도 한다.
+2. 저장소를 직접 받아 로컬 디렉터리 소스로 등록한다(이 방식은 이 PC에서 확인됨). 갱신은 `git pull` 후
+   `claude plugin marketplace update takgon` → `claude plugin update takgon-mods@takgon`이다.
+
+   ```bash
+   git clone https://github.com/astromelon/takgon-mods.git
+   claude plugin marketplace add ./takgon-mods
+   claude plugin install takgon-mods@takgon
+   ```
+3. 백신의 실시간 검사 예외에 Claude 설정 폴더(`~/.claude/plugins`)를 넣으면 해결될 수 있다(확인하지 못한 추정).
+
 ### 업데이트
 
 마켓플레이스 사본을 먼저 갱신한 뒤 플러그인을 업데이트한다. 순서를 바꾸면 이전 버전이 그대로 남는다.
