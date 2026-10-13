@@ -128,3 +128,25 @@ describe('/mods 명령', () => {
     expect(usage.text).toContain('/mods <')
   })
 })
+
+describe('빈 store 첫 사용', () => {
+  test('/mods 토글과 lang 전환이 g/ 키를 만든다', async ($, on) => {
+    const sets: { key: string; value: unknown }[] = []
+    const data = new Map<string, unknown>()
+    on('store.get', ($, e) => ({ value: data.get(e.key) }))
+    on('store.set', ($, e) => {
+      sets.push({ key: e.key, value: e.value })
+      data.set(e.key, e.value)
+      return { value: undefined }
+    })
+
+    await mods($, '')
+    expect(sets).toHaveLength(0)
+
+    await mods($, 'panel off')
+    await mods($, 'lang en')
+
+    expect(sets.find(one => one.key === 'g/core/modules')?.value).toMatchObject({ panel: false })
+    expect(sets.find(one => one.key === 'g/i18n/lang')?.value).toBe('en')
+  })
+})

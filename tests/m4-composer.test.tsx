@@ -139,8 +139,33 @@ type World = {
   messages: SessionMessage[]
 }
 
+/** 쓰기를 기록하는 메모리 store. `store.set`은 한 번만 등록할 수 있어 mock.store 대신 쓴다. */
+const recordingStore = (
+  on: On,
+  sets: { key: string; value: unknown }[],
+  initial: Record<string, unknown> = {},
+): void => {
+  const data = new Map<string, unknown>(Object.entries(initial))
+  on('store.get', ($, e) => ({ value: data.get(e.key) }))
+  on('store.set', ($, e) => {
+    sets.push({ key: e.key, value: e.value })
+    data.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('store.delete', ($, e) => {
+    data.delete(e.key)
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: [...data.keys()] }))
+}
+
 /** 엔진 자리: 세션·루트·fork·complete·ask·프롬프트 바닥을 메모리로 답한다. */
-const engine = (on: On, store: Record<string, unknown> = {}, isForkOk = true): World => {
+const engine = (
+  on: On,
+  store: Record<string, unknown> = {},
+  isForkOk = true,
+  sets?: { key: string; value: unknown }[],
+): World => {
   const world: World = { submitted: [], forks: [], completes: 0, asks: [], messages: [] }
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.root', () => ({ value: 'C:/proj' }))
@@ -163,7 +188,11 @@ const engine = (on: On, store: Record<string, unknown> = {}, isForkOk = true): W
     const { Text } = $.ui.resolve(e)
     return <Text>engine-band</Text>
   })
-  mock.store(on, store)
+  if (sets === undefined) {
+    mock.store(on, store)
+  } else {
+    recordingStore(on, sets, store)
+  }
   return world
 }
 
@@ -378,5 +407,28 @@ describe('Prompt-coach', () => {
 
     const state = await $.command.run({ command: 'coach', args: '', ...RUN })
     expect(state.text).toBe('프롬프트 코치: 꺼짐')
+  })
+})
+
+describe('빈 store 첫 사용', () => {
+  test('읽기는 쓰지 않고, 코치 설정과 첫 Next-steps가 각자의 키를 만든다', async ($, on) => {
+    const sets: { key: string; value: unknown }[] = []
+    const world = engine(on, {}, true, sets)
+    const clock = mock.clock(on, { now: 1_000_000 })
+    await $.session.start(START)
+
+    expect((await $.command.run({ command: 'coach', args: '', ...RUN })).text).toContain('켜짐')
+    expect(sets.filter(one => one.key === 'g/m4/coach' || one.key === TASKS_KEY)).toHaveLength(0)
+
+    await $.command.run({ command: 'coach', args: 'off', ...RUN })
+    expect(sets.filter(one => one.key === 'g/m4/coach')).toEqual([{ key: 'g/m4/coach', value: false }])
+
+    world.messages = TOOL_TURN
+    await $.turn.complete(TURN)
+    await clock.settle()
+
+    const saved = sets.filter(one => one.key === TASKS_KEY)
+    expect(saved).toHaveLength(1)
+    expect(saved[0]?.value).toMatchObject([{ text: '테스트 추가' }, { text: 'Run tests' }])
   })
 })
