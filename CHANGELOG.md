@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Changed
+- README·`docs/engine-constraints.md`: 마켓플레이스 이름이 바뀌면 store 파일이 갈라진다는 내용을 추정에서 실측으로 바꿈. 임시 환경에서 대화형 세션을 돌려, 이름만 `takgon-alt`로 바꾸면 모듈 설정이 초기값으로 돌아가고 새 파일이 생기며 기존 파일은 유지됨을 확인했다. `marketplace remove` 뒤에 엔진이 만든 실제 파일이 남는 것도 같이 확인했다.
+
 ## [0.4.4] - 2026-10-13
 
 ### Added
