@@ -26,6 +26,10 @@ jobs:
         with:
           node-version: '22'
 
+      # plugin.json 버전과 CHANGELOG 최상단 버전 절이 같은지 검사한다(배포 절차 누락 방지).
+      - name: Check release version
+        run: node tools/release.mjs --check
+
       # 테스트를 검증한 Claude Code 버전으로 고정한다. 올릴 때는 로컬에서 validate·test를 먼저 통과시킨다.
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.296

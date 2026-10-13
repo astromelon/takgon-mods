@@ -5,7 +5,12 @@
 
 ## [Unreleased]
 
+### Added
+- `tools/release.mjs`: `plugin.json` 버전 올림과 CHANGELOG `[Unreleased]` 정리, 커밋·push를 자동화. `--check`는 두 버전의 일치를 검사하며 CI에서 실행한다.
+- README: 업데이트(marketplace update → plugin update) 방법과 새 버전 배포 절차.
+
 ### Changed
+- README: 저장소가 public으로 바뀐 것을 반영해 설치 시 `gh auth login` 선행 안내를 제거.
 - CI: 임시 진단(`probe_classic` 비차단 실행, debug 로그 artifact 업로드)으로 원인을 확정한 뒤 해당 단계를 제거. `cc-plugin-sec-default`가 로그인 없는 CI 러너에서는 놓이지 않아 `classic.*` 훅 bypass가 재현되지 않는다(`not seated: no managed settings and not a Team or Enterprise organization`).
 - `tools/e2e/README.md`: `probe_classic`을 CI 제외·로컬 전용으로 표시.
 - `docs/engine-constraints.md` 1번: CI 러너에서 bypass가 재현되지 않는 CI 러너에서 bypass가 재현되지 않는 원인을 CI debug 로그로 확인한 사실로 기록(`cc-plugin-sec-default`는 Team·Enterprise 조직이나 managed settings가 있을 때만 맨 바깥에 놓임).
