@@ -50,8 +50,7 @@ Claude Code용 개인 생산성 mods 플러그인. 모듈 8개를 한 플러그�
 
 ## 설치
 
-저장소(`astromelon/takgon-mods`)는 private이다. 설치하는 PC에서 먼저 저장소 접근 권한이 있는 계정으로
-`gh auth login`과 `gh auth setup-git`을 해 두어야 Claude Code가 저장소를 받아 온다.
+저장소(`astromelon/takgon-mods`)는 public이라 별도 인증 없이 설치할 수 있다.
 
 Claude Code 터미널 세션의 프롬프트에서:
 
@@ -83,10 +82,19 @@ claude plugin update takgon-mods@takgon
 `plugin.json`의 `version`이 그대로면 다른 PC의 `plugin update`가 새 커밋이 있어도 "이미 최신"으로 판단한다.
 mods를 고쳐 다른 PC에 반영하려면:
 
-1. `.claude-plugin/plugin.json`의 `version`을 올린다(예: `0.4.1` → `0.4.2`).
-2. `CHANGELOG.md`의 `[Unreleased]` 내용을 `## [0.4.2] - YYYY-MM-DD` 절로 옮기고 `[Unreleased]`는 비워 둔다.
-3. `build: 0.4.2로 버전을 올리고 CHANGELOG 정리`처럼 커밋하고 `git push`한다(이전 버전 올림 커밋과 같은 형식).
-4. 다른 PC에서 위 업데이트 명령 두 개를 순서대로 실행한다.
+1. 변경 사항을 `CHANGELOG.md`의 `[Unreleased]`에 기록하고 커밋해 작업 트리를 깨끗하게 만든다.
+2. 스크립트로 버전을 올린다(`patch`·`minor`·`major` 또는 `0.4.2` 같은 정확한 버전).
+
+   ```bash
+   node tools/release.mjs patch              # 파일만 수정하고 diff 출력
+   node tools/release.mjs patch --push       # 수정 + 커밋 + push (--commit은 커밋까지만)
+   ```
+
+   스크립트는 `.claude-plugin/plugin.json`의 `version`을 올리고, `[Unreleased]` 내용을 `## [x.y.z] - YYYY-MM-DD`
+   절로 옮기며, 커밋 메시지는 `build: x.y.z로 버전을 올리고 CHANGELOG 정리`로 만든다.
+3. 다른 PC에서 위 업데이트 명령 두 개를 순서대로 실행한다.
+
+CI는 `node tools/release.mjs --check`로 `plugin.json` 버전과 CHANGELOG 최상단 버전 절이 같은지 검사한다.
 
 특정 저장소에서만 끄기: `claude plugin disable takgon-mods@takgon --scope local`
 
