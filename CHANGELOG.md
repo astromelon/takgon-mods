@@ -10,6 +10,9 @@
 
 ### Added
 - README: Windows에서 `marketplace add`가 EPERM rename으로 실패할 때의 대처법(재시도, 로컬 디렉터리 소스 등록).
+- README: 마켓플레이스 전환 전 store 백업·복원 절차와 주의 문구. store 파일명 해시가 `sha256("<플러그인>@<마켓플레이스 이름>")` 앞 12자리라 마켓플레이스 이름이 같으면 소스를 바꿔도 같은 파일을 쓰며, `uninstall`·`marketplace remove`·소스 전환 뒤에도 파일이 유지됨을 임시 환경에서 확인했다.
+- `docs/engine-constraints.md`: store 파일명 해시 규칙과 전환 후 유지 실측을 "기타 관찰"에 기록.
+- `tools/ci-local.mjs`: CI와 같은 순서로 릴리스 버전 검사·validate·test·e2e 하네스·probe를 한 번에 돌리는 스크립트. `--keep-going`, `--install-deps`, `--tsc` 지원.
 
 ## [0.4.2] - 2026-10-13
 
