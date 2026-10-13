@@ -149,6 +149,31 @@ claude plugin update takgon-mods@takgon
 세션 안에서는 `/plugin marketplace update takgon` → `/plugin update takgon-mods@takgon`. 끝나면 열린 세션에서
 `/reload-plugins`(또는 세션 재시작). 설치된 버전은 `claude plugin list`로 확인한다.
 
+### `plugin update`가 `Host key verification failed`로 실패할 때
+
+`marketplace update`는 성공하는데 `plugin update`가 아래 오류로 실패하는 PC가 있었다. 저장소는 public이라 접근 권한 문제가 아니다.
+플러그인을 SSH 주소로 클론하는데 이 PC의 `~/.ssh/known_hosts`에 `github.com` 호스트 키가 없어서 난다.
+
+```
+✘ Failed to update plugin "takgon-mods@takgon": Failed to clone repository: ...
+No ED25519 host key is known for github.com and you have requested strict checking.
+Host key verification failed.
+```
+
+둘 중 하나로 해결한다.
+
+1. 이번 한 번만 HTTPS로 받는다. 환경변수는 이 명령에만 적용되고 git 설정과 `known_hosts`는 바뀌지 않는다(이 PC에서 확인됨).
+
+   ```bash
+   GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.https://github.com/.insteadOf" GIT_CONFIG_VALUE_0="git@github.com:" \
+     claude plugin update takgon-mods@takgon
+   ```
+
+   PowerShell은 같은 값을 먼저 `$env:GIT_CONFIG_COUNT=1; $env:GIT_CONFIG_KEY_0="url.https://github.com/.insteadOf";
+   $env:GIT_CONFIG_VALUE_0="git@github.com:"`로 설정한 뒤 명령을 실행한다(PowerShell 문법은 확인하지 못했다).
+2. 호스트 키를 한 번 등록한다. `ssh -T git@github.com`을 실행해 나오는 지문이 [GitHub 공개 SSH 키 지문](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints)과
+   같으면 `yes`로 답한다. 이후에는 이 오류가 나지 않는다(이 방법은 실행해 보지 않았다).
+
 ### 새 버전 배포 절차(저장소 관리자)
 
 `plugin.json`의 `version`이 그대로면 다른 PC의 `plugin update`가 새 커밋이 있어도 "이미 최신"으로 판단한다.
