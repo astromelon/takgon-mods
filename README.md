@@ -190,6 +190,18 @@ claude plugin validate <이 폴더>
 claude plugin test <이 폴더>
 ```
 
+푸시 전에 CI와 같은 검사(버전 검사 → validate → test → e2e 하네스 단위 테스트 → e2e probe)를 한 번에 돌리려면 저장소 루트에서:
+
+```bash
+node tools/ci-local.mjs                  # 첫 실패에서 멈춘다
+node tools/ci-local.mjs --keep-going     # 실패해도 끝까지 돌려 요약만 낸다
+node tools/ci-local.mjs --install-deps   # e2e 의존성(pywinpty, pyte)을 먼저 설치한다. 새 PC에서 처음 한 번
+node tools/ci-local.mjs --tsc            # CI에 없는 타입 체크를 덧붙인다
+```
+
+e2e는 Windows 전용 하네스(의사 터미널)라 Windows에서만 돌고, CI는 Claude Code 2.1.296으로 고정이라 로컬 버전이 다르면
+경고가 나온다.
+
 - 설계와 결정 사항: `SPEC.md`
 - 실제 세션에서 확인한 엔진 제약: `docs/engine-constraints.md`
 - 변경 이력: `CHANGELOG.md`
