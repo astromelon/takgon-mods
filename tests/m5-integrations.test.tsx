@@ -447,6 +447,19 @@ describe('/issue 명령', () => {
     expect((await issue($, '')).text).toBe(tr('ko', 'issue.linkedEmpty'))
   })
 
+  test('store가 비어 있으면 목록은 빈 안내만 하고 키를 쓰지 않는다', async ($, on) => {
+    const sets: Array<{ key: string; value: unknown }> = []
+    const clock = mock.clock(on)
+    engine(on, () => NO_PR)
+    memStore(on, sets)
+    mock.env(on, { LINEAR_API_KEY: 'k' })
+    await $.session.start(START)
+    await clock.settle()
+
+    expect((await issue($, '')).text).toBe(tr('ko', 'issue.linkedEmpty'))
+    expect(sets.filter(one => one.key === LINKED_KEY)).toHaveLength(0)
+  })
+
   test('저장된 연결 이슈를 세션 시작 때 불러온다', async ($, on) => {
     const clock = mock.clock(on)
     engine(on, () => NO_PR)

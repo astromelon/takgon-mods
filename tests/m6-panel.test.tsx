@@ -291,6 +291,33 @@ describe('M6 명령·패널', () => {
     expect(await ui.find({ type: 'Text', text: /경고 임계치: 65%/ })).toBeDefined()
   })
 
+  test('store가 비어 있어도 목록은 빈 안내만 하고 쓰지 않으며, 첫 /pin이 핀 키를 만든다', async ($, on) => {
+    const sets: Array<{ key: string; value: unknown }> = []
+    engine(on)
+    const data = new Map<string, unknown>()
+    on('store.get', ($, e) => ({ value: data.get(e.key) }))
+    on('store.set', ($, e) => {
+      sets.push({ key: e.key, value: e.value })
+      data.set(e.key, e.value)
+      return { value: undefined }
+    })
+    on('store.delete', ($, e) => {
+      data.delete(e.key)
+      return { value: undefined }
+    })
+    on('store.keys', () => ({ value: [...data.keys()] }))
+    await $.session.start(START)
+
+    expect((await $.command.run(run('pin', 'list'))).text).toContain('핀이 없습니다')
+    expect(sets.filter(one => one.key === `p/${PID}/m6/pins`)).toHaveLength(0)
+
+    await $.command.run(run('pin', '첫 핀'))
+
+    const saved = sets.filter(one => one.key === `p/${PID}/m6/pins`)
+    expect(saved).toHaveLength(1)
+    expect(saved[0]?.value).toMatchObject([{ text: '첫 핀' }])
+  })
+
   test('/panel threshold로 바꾼 임계치로 경고하고, 인자 없이 부르면 현재 값을 보여준다', async ($, on) => {
     const toasts: string[] = []
     engine(on, toasts)
