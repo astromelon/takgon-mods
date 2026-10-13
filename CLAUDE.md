@@ -21,6 +21,7 @@ claude --plugin-dir .            # 개발 세션(저장 시 핫 리로드, 거�
 claude plugin validate .         # hooks/calls·$.state 계약·거부 항목 검사
 claude plugin test .             # tests/**/*.test.ts(x) 전부 실행(파일 단위 선택 옵션 없음)
 npx -p typescript tsc -p .       # 타입 체크(루트 tsconfig는 .claude-plugin/types/tsconfig.json 상속, 둘 다 git 제외)
+node tools/ci-local.mjs          # CI와 같은 순서로 버전 검사·validate·test·e2e 하네스·probe를 한 번에(--keep-going, --install-deps, --tsc)
 
 # tools/e2e: 실제 대화형 세션을 의사 터미널로 띄우는 Windows 전용 하네스
 python -m unittest discover -s tools/e2e -p "test_*.py"   # 하네스 단위 테스트
