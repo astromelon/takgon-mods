@@ -66,7 +66,27 @@ claude plugin marketplace add astromelon/takgon-mods
 claude plugin install takgon-mods@takgon
 ```
 
-업데이트: `claude plugin update takgon-mods@takgon` 후 열린 세션에서 `/reload-plugins`.
+### 업데이트
+
+마켓플레이스 사본을 먼저 갱신한 뒤 플러그인을 업데이트한다. 순서를 바꾸면 이전 버전이 그대로 남는다.
+
+```bash
+claude plugin marketplace update takgon
+claude plugin update takgon-mods@takgon
+```
+
+세션 안에서는 `/plugin marketplace update takgon` → `/plugin update takgon-mods@takgon`. 끝나면 열린 세션에서
+`/reload-plugins`(또는 세션 재시작). 설치된 버전은 `claude plugin list`로 확인한다.
+
+### 새 버전 배포 절차(저장소 관리자)
+
+`plugin.json`의 `version`이 그대로면 다른 PC의 `plugin update`가 새 커밋이 있어도 "이미 최신"으로 판단한다.
+mods를 고쳐 다른 PC에 반영하려면:
+
+1. `.claude-plugin/plugin.json`의 `version`을 올린다(예: `0.4.1` → `0.4.2`).
+2. `CHANGELOG.md`의 `[Unreleased]` 내용을 `## [0.4.2] - YYYY-MM-DD` 절로 옮기고 `[Unreleased]`는 비워 둔다.
+3. `build: 0.4.2로 버전을 올리고 CHANGELOG 정리`처럼 커밋하고 `git push`한다(이전 버전 올림 커밋과 같은 형식).
+4. 다른 PC에서 위 업데이트 명령 두 개를 순서대로 실행한다.
 
 특정 저장소에서만 끄기: `claude plugin disable takgon-mods@takgon --scope local`
 
