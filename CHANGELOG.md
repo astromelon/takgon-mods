@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-10-13
+
 ### Added
 - README: `plugin update`가 `Host key verification failed`로 실패할 때의 대처법. `marketplace update`는 성공하는데 플러그인을 SSH로 클론하다 `known_hosts`에 `github.com` 키가 없어 실패하는 경우로, 이번 한 번만 HTTPS로 받는 환경변수(`GIT_CONFIG_*`)와 호스트 키를 등록하는 방법을 안내한다.
 - README 개발 섹션: `tools/ci-local.mjs` 실행 방법과 옵션.
