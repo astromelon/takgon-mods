@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Added
+- README: Windows에서 `marketplace add`가 EPERM rename으로 실패할 때의 대처법(재시도, 로컬 디렉터리 소스 등록).
+
 ## [0.4.2] - 2026-10-13
 
 ### Added
