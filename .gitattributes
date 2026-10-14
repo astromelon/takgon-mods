@@ -1,3 +1,4 @@
 # 모든 텍스트 파일을 저장소·작업 트리 모두 LF로 통일한다(core.autocrlf 설정과 무관).
-# 현재 바이너리·Windows 전용 스크립트(.bat/.cmd/.ps1)는 없다. 추가 시 binary / eol=crlf 규칙을 넣는다.
+# 바이너리와 .bat/.cmd는 없다. tools/*.ps1은 LF + UTF-8 BOM으로 둔다(Windows PowerShell 5.1이 BOM 없는 UTF-8을 ANSI로 읽어
+# 한글이 깨진다). git은 BOM을 건드리지 않고, PowerShell은 LF 줄바꿈도 읽는다. 바이너리나 .bat/.cmd를 추가하면 binary / eol=crlf 규칙을 넣는다.
 * text=auto eol=lf

@@ -104,6 +104,23 @@ Failed to finalize marketplace cache ... EPERM: operation not permitted, rename 
    ```
 3. 백신의 실시간 검사 예외에 Claude 설정 폴더(`~/.claude/plugins`)를 넣으면 해결될 수 있다(확인하지 못한 추정).
 
+실패가 계속되면 증거를 모아 이슈에 올린다. `tools\capture-add-failure.ps1`이 실행마다 새 임시 설정 폴더에서 `marketplace add`를
+돌리고, 실패하면 에러 전문(EPERM 포함 여부), `plugins\marketplaces` 상태, 후보 프로세스(백신·검색 인덱서·OneDrive 등), CPU
+사용률 상위, 파일 점유 프로세스(알 수 있을 때)를 증거 파일로 남긴다. 실제 `~/.claude`는 건드리지 않는다.
+
+```powershell
+# 실패할 때까지 최대 50회(첫 실패에서 멈춤). 저장소 루트에서
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\capture-add-failure.ps1 -Runs 50
+# 끝까지 돌려 실패율을 보려면(-File이 아니라 -Command)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& 'tools\capture-add-failure.ps1' -Runs 30 -StopOnFail:$false"
+```
+
+저장소를 받지 않았다면 설치된 플러그인 폴더(`~/.claude/plugins/cache/takgon/takgon-mods/<버전>/tools/`)에서 같은 명령을 쓴다.
+증거 파일에는 사용자명·경로·프로세스 이름이 들어 있으니 올리기 전에 가린다. 한계: 원인을 확정하지는 못하고 정황 증거만 남긴다.
+이 PC에서 부하가 높은 시간대(CPU 상위가 `java`·WSL)에 이 스크립트를 약 60회 돌렸더니 EPERM이 6회 났고 연달아 난 적도 있다.
+부하와의 인과는 확인하지 못했다(성공한 실행의 부하는 기록하지 않았다). 네트워크 오류(`Empty reply from server`)로 실패한 1회는
+EPERM이 아니므로 집계에서 뺐다.
+
 ### 마켓플레이스 전환 전 store 백업·복원
 
 마켓플레이스 이름을 바꾸기 전, 또는 store 파일을 직접 만지기 전에 한다. 이름이 `takgon`인 채로 소스를 바꾸거나
@@ -118,7 +135,22 @@ Failed to finalize marketplace cache ... EPERM: operation not permitted, rename 
 - store 파일을 지우면 핀이 비었고, 백업 파일을 복사하자(세션을 연 채가 아니라 닫은 상태에서) 핀이 돌아왔다.
 - 이름만 `takgon-alt`로 바꾸자 핀이 비었고 새 파일이 생겼으며, 기존 파일은 그대로였다. 백업을 **새 파일명으로** 복사하자 핀이 돌아왔다.
 
-**백업** (열린 세션을 모두 닫은 뒤)
+**스크립트로 하기** (권장). 열린 Claude Code 세션을 모두 닫고 별도 PowerShell에서, 저장소 루트(또는 설치된 플러그인의
+`tools/` 폴더)에서 실행한다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\store-backup.ps1 List      # store 파일·백업 폴더 목록(바꾸지 않음)
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\store-backup.ps1 Backup    # <설정 폴더>\backup-takgon-store-<시각>에 복사 후 해시 확인
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\store-backup.ps1 Restore   # 가장 최근 백업을 현재 마켓플레이스 파일명으로 복원(-WhatIf로 미리 보기)
+```
+
+`Restore`는 설치된 마켓플레이스 이름(`installed_plugins.json`)으로 파일명을 계산해, 이름이 같으면 덮어쓰고 이름이 바뀌었으면 새
+파일명으로 복사한다. 덮어쓰기 전에 현재 파일을 백업 폴더에 `before-restore-*`로 남기고, 깨진 JSON이거나 4 MiB를 넘는 백업,
+여러 파일 중 대상을 못 고르는 백업, 열린 Claude Code 세션이 있는 경우(`-Force`로 무시)에는 멈춘다. 가짜 설정 폴더로 20개 시나리오
+(백업·같은 이름 복원·이름 변경 복원·깨진 백업·`-WhatIf` 등)를 PowerShell 5.1과 7에서 확인했다. 실제 엔진 세션과 함께 돌려 본 것은
+아니고, 세션에서의 검증은 아래 수동 절차로 했다. 이 스크립트는 다음 릴리스부터 설치된 플러그인에 들어간다.
+
+**수동으로 하려면** (열린 세션을 모두 닫은 뒤)
 
 ```powershell
 $store = "$env:USERPROFILE\.claude\plugins\store"
@@ -202,7 +234,10 @@ mods를 고쳐 다른 PC에 반영하려면:
    주석 태그 `vx.y.z`도 달고, `--push`는 커밋과 태그를 함께 올린다. 같은 태그가 이미 있으면 파일을 바꾸기 전에 멈춘다.
 3. 다른 PC에서 위 업데이트 명령 두 개를 순서대로 실행한다.
 
-CI는 `node tools/release.mjs --check`로 `plugin.json` 버전과 CHANGELOG 최상단 버전 절이 같은지 검사한다.
+CI는 `node tools/release.mjs --check`로 `plugin.json` 버전과 CHANGELOG 최상단 버전 절이 같은지, `--check-tags`로 태그
+`vX.Y.Z`마다 그 커밋의 `plugin.json`·CHANGELOG 버전이 `X.Y.Z`인지와 현재 버전의 태그가 있는지(HEAD의 조상인지)를 검사한다.
+`--check-tags`는 전체 이력이 필요해 CI의 checkout은 `fetch-depth: 0`이다. 태그를 빠뜨리고 올렸다면
+`git tag -a vX.Y.Z <릴리스 커밋> -m vX.Y.Z && git push origin vX.Y.Z`로 단다.
 
 특정 저장소에서만 끄기: `claude plugin disable takgon-mods@takgon --scope local`
 
@@ -226,7 +261,7 @@ claude plugin validate <이 폴더>
 claude plugin test <이 폴더>
 ```
 
-푸시 전에 CI와 같은 검사(버전 검사 → validate → test → e2e 하네스 단위 테스트 → e2e probe)를 한 번에 돌리려면 저장소 루트에서:
+푸시 전에 CI와 같은 검사(버전·태그 검사 → validate → test → e2e 하네스 단위 테스트 → e2e probe)를 한 번에 돌리려면 저장소 루트에서:
 
 ```bash
 node tools/ci-local.mjs                  # 첫 실패에서 멈춘다
