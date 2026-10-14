@@ -82,8 +82,9 @@ EPERM이 나던 PC는 `claude plugin marketplace remove takgon` 후 위 명령�
 
 파일이 많은 저장소(옛 `astromelon/takgon-mods` 마켓플레이스 소스)를 add하면 일부 Windows PC에서 아래 오류로 실패했다.
 이 PC의 임시 환경에서는 옛 방식이 13회 중 12회 실패했다. 파일 1개짜리 마켓플레이스(`astromelon/takgon-marketplace`)로
-분리한 뒤에는 19회 중 3회(연달아 발생)로 줄었지만 없어지지는 않았다. 실패한 add는 `Failed to finalize marketplace cache`로
-시작하고, add가 성공하면 install도 모두 성공했다. 다른 PC의 결과는 확인하지 못했다.
+분리한 뒤에는 101회 중 3회(연달아 발생, 이후 91회는 0건)로 줄었지만 없어지지는 않았다. 실패한 add는
+`Failed to finalize marketplace cache`로 시작하고, add 성공 뒤 install을 확인한 17회는 모두 성공했다. 다른 PC의 결과는
+확인하지 못했다.
 
 ```
 Failed to finalize marketplace cache ... EPERM: operation not permitted, rename '...\astromelon-takgon-mods' -> '...\takgon'
