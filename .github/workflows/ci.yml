@@ -21,6 +21,9 @@ jobs:
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
     steps:
       - uses: actions/checkout@v5
+        with:
+          # 태그·버전 일치 검사가 태그와 그 커밋의 파일을 읽으므로 전체 이력이 필요하다.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
@@ -29,6 +32,10 @@ jobs:
       # plugin.json 버전과 CHANGELOG 최상단 버전 절이 같은지 검사한다(배포 절차 누락 방지).
       - name: Check release version
         run: node tools/release.mjs --check
+
+      # 태그 vX.Y.Z마다 그 커밋의 plugin.json·CHANGELOG 버전이 X.Y.Z인지, 현재 버전의 태그가 있는지 검사한다(태그 누락 방지).
+      - name: Check release tags
+        run: node tools/release.mjs --check-tags
 
       # 테스트를 검증한 Claude Code 버전으로 고정한다. 올릴 때는 로컬에서 validate·test를 먼저 통과시킨다.
       - name: Install Claude Code

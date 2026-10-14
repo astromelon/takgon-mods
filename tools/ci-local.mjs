@@ -2,7 +2,7 @@
 //
 //   node tools/ci-local.mjs [--keep-going] [--install-deps] [--tsc]
 //
-// 순서는 CI와 같다: 릴리스 버전 검사 → validate → test → e2e 하네스 단위 테스트 → e2e probe.
+// 순서는 CI와 같다: 릴리스 버전·태그 검사 → validate → test → e2e 하네스 단위 테스트 → e2e probe.
 // 기본은 첫 실패에서 멈춘다. --keep-going은 끝까지 돌려 요약만 낸다.
 // --install-deps는 e2e 의존성(pip install)을 먼저 설치한다(CI의 해당 단계). --tsc는 CI에 없는 타입 체크를 덧붙인다.
 // CI는 Claude Code 2.1.296 고정이다. 로컬 버전이 다르면 아래에서 경고한다.
@@ -24,6 +24,7 @@ const steps = [
     ? [{ name: 'e2e 의존성 설치', command: 'pip install -r tools/e2e/requirements.txt' }]
     : []),
   { name: 'Check release version', command: 'node tools/release.mjs --check' },
+  { name: 'Check release tags', command: 'node tools/release.mjs --check-tags' },
   { name: 'Validate plugin', command: 'claude plugin validate .' },
   { name: 'Test plugin', command: 'claude plugin test .' },
   { name: 'Test e2e harness', command: 'python -m unittest discover -s tools/e2e -p "test_*.py"' },
