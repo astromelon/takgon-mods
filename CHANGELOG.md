@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Changed
+- `tools/capture-add-failure.ps1`: `-LogCsv`·`-Label`을 추가해 성공한 실행을 포함한 모든 실행의 소요시간과 시스템 CPU·디스크 평균(성능 카운터)을 CSV로 기록하고, 실패를 `eperm`/`network`/`other`로 분류한다. 증거 파일의 프로세스별 CPU(WMI)는 코어 수를 넘는 값이 나올 수 있어 순위로만 읽도록 README에 적었다.
+- README: EPERM 관찰을 부하 통제 실험 결과로 갱신(CPU·디스크 부하와 새 스크립트 직후 실행 모두 재현 실패).
+
 ### Added
 - `tools/store-backup.ps1`: store 파일 `List`·`Backup`·`Restore` 스크립트. 마켓플레이스 이름에서 파일명(해시)을 계산해 같은 이름이면 덮어쓰고 이름이 바뀌었으면 새 파일명으로 복원한다. 복원 전 현재 파일을 `before-restore-*`로 남기고, 깨진·4 MiB 초과·모호한 백업과 열린 세션이 있을 때 멈추며 `-WhatIf`를 지원한다. PowerShell 5.1·7에서 가짜 설정 폴더로 20개 시나리오를 확인했다.
 - `tools/capture-add-failure.ps1`: `marketplace add` 간헐 실패(EPERM)의 정황 증거(에러 전문, 폴더 상태, 후보 프로세스, CPU, 파일 점유)를 남기는 스크립트. README EPERM 절에 사용법을 안내한다.

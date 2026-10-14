@@ -111,15 +111,17 @@ Failed to finalize marketplace cache ... EPERM: operation not permitted, rename 
 ```powershell
 # 실패할 때까지 최대 50회(첫 실패에서 멈춤). 저장소 루트에서
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\capture-add-failure.ps1 -Runs 50
-# 끝까지 돌려 실패율을 보려면(-File이 아니라 -Command)
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& 'tools\capture-add-failure.ps1' -Runs 30 -StopOnFail:$false"
+# 끝까지 돌려 실패율을 보려면(-File이 아니라 -Command). -LogCsv는 성공한 실행을 포함해 모든 실행의 시스템 CPU·디스크 평균을 기록한다
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& 'tools\capture-add-failure.ps1' -Runs 30 -StopOnFail:$false -LogCsv run.csv -Label baseline"
 ```
 
 저장소를 받지 않았다면 설치된 플러그인 폴더(`~/.claude/plugins/cache/takgon/takgon-mods/<버전>/tools/`)에서 같은 명령을 쓴다.
 증거 파일에는 사용자명·경로·프로세스 이름이 들어 있으니 올리기 전에 가린다. 한계: 원인을 확정하지는 못하고 정황 증거만 남긴다.
-이 PC에서 부하가 높은 시간대(CPU 상위가 `java`·WSL)에 이 스크립트를 약 60회 돌렸더니 EPERM이 6회 났고 연달아 난 적도 있다.
-부하와의 인과는 확인하지 못했다(성공한 실행의 부하는 기록하지 않았다). 네트워크 오류(`Empty reply from server`)로 실패한 1회는
-EPERM이 아니므로 집계에서 뺐다.
+증거 파일의 프로세스별 CPU(WMI 값)는 코어 수를 넘는 값이 나올 수 있어 순위로만 읽는다. 시스템 전체 부하는 `-LogCsv`의 평균이 정확하다.
+
+이 PC에서 이 스크립트로 약 61회를 돌렸더니 EPERM이 6회 났고, 4분 안에 몰려 연달아 난 적도 있다. 이어서 부하를 통제해 시험했다
+(부하 없음·CPU 100% 점유·파일 생성/삭제 반복을 교차해 96회, 새 스크립트 파일을 만든 직후 실행 30회). 126회 모두 성공했다. 즉
+CPU·디스크 부하만으로는 재현되지 않았고 원인은 아직 모른다. 네트워크 오류(`Empty reply from server`) 1회는 EPERM이 아니라 집계에서 뺐다.
 
 ### 마켓플레이스 전환 전 store 백업·복원
 

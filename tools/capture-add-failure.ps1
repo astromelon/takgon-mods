@@ -26,6 +26,11 @@
   $env:USERPROFILE 아래 폴더를 지정한다. 예: -BaseDir "$env:USERPROFILE\tmp-evidence" (폴더가 없으면 만든다)
 .PARAMETER Source
   marketplace 소스 (기본 astromelon/takgon-marketplace).
+.PARAMETER LogCsv
+  지정하면 **성공한 실행을 포함한 모든 실행**을 CSV 한 줄씩 기록한다(열: run,label,start,ms,exit,kind,cpu_avg,disk_avg).
+  cpu_avg·disk_avg는 그 실행 구간의 시스템 전체 평균 사용률(성능 카운터)이다. 부하와 실패의 관계를 보려면 성공한 실행의 부하가 필요하다.
+.PARAMETER Label
+  CSV의 label 열에 넣을 조건 이름(예: baseline, cpu-load).
 
 .EXAMPLE
   # 실패할 때까지 최대 50회 반복 (첫 실패에서 중단)
@@ -51,7 +56,9 @@ param(
   [int]$Runs = 50,
   [switch]$StopOnFail = $true,
   [string]$BaseDir = $env:TEMP,
-  [string]$Source = 'astromelon/takgon-marketplace'
+  [string]$Source = 'astromelon/takgon-marketplace',
+  [string]$LogCsv,
+  [string]$Label = ''
 )
 
 Set-StrictMode -Version 2.0
@@ -157,6 +164,22 @@ Write-Host "실제 ~/.claude : $realClaude (변경하지 않음)"
 Write-Host "Source/Runs   : $Source / $Runs / StopOnFail=$([bool]$StopOnFail)"
 
 $origConfigDir = $env:CLAUDE_CONFIG_DIR
+
+# 시스템 전체 CPU·디스크 사용률. NextValue()는 직전 호출 이후 평균이라, 실행 직전에 한 번 읽고 직후에 읽으면 그 실행 구간의 평균이 된다.
+$cpuCounter = $null; $diskCounter = $null
+try {
+  $cpuCounter = New-Object System.Diagnostics.PerformanceCounter('Processor', '% Processor Time', '_Total')
+  $diskCounter = New-Object System.Diagnostics.PerformanceCounter('PhysicalDisk', '% Disk Time', '_Total')
+  [void]$cpuCounter.NextValue(); [void]$diskCounter.NextValue()
+} catch {
+  $cpuCounter = $null; $diskCounter = $null
+  Write-Warning "성능 카운터 준비 실패(부하 기록 없이 계속): $($_.Exception.Message)"
+}
+$inv = [System.Globalization.CultureInfo]::InvariantCulture
+if ($LogCsv -and -not (Test-Path -LiteralPath $LogCsv)) {
+  [System.IO.File]::WriteAllText($LogCsv, "run,label,start,ms,exit,kind,cpu_avg,disk_avg`r`n", (New-Object System.Text.UTF8Encoding($false)))
+}
+$kindCounts = @{}
 $failCount = 0
 $done = 0
 $evidenceFiles = @()
@@ -177,6 +200,7 @@ try {
     $se = Join-Path $BaseDir "$($script:Prefix)-out-$no.stderr.tmp"
 
     $env:CLAUDE_CONFIG_DIR = $cfg
+    if ($cpuCounter) { [void]$cpuCounter.NextValue(); [void]$diskCounter.NextValue() }   # 이 실행 구간의 평균을 재기 위한 기준점
     $start = Get-Date
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $exitCode = -1
@@ -192,6 +216,10 @@ try {
     }
     $sw.Stop()
     $end = Get-Date
+    $cpuAvg = $null; $diskAvg = $null
+    if ($cpuCounter) {
+      try { $cpuAvg = [math]::Round($cpuCounter.NextValue(), 1); $diskAvg = [math]::Round($diskCounter.NextValue(), 1) } catch { }
+    }
     $env:CLAUDE_CONFIG_DIR = $origConfigDir
     $done++
 
@@ -202,9 +230,21 @@ try {
     [void](Remove-EvidenceItem $se $BaseDir)
 
     $failed = ($exitCode -ne 0) -or [bool]$launchErr
+    # 분류: ok / eperm(마지막 rename 실패) / network(GitHub 응답 문제) / other
+    $allText = $stdout + "`n" + $stderr
+    if (-not $failed) { $kind = 'ok' }
+    elseif ($allText -match 'EPERM') { $kind = 'eperm' }
+    elseif ($allText -match 'Empty reply|unable to access|Could not resolve|Connection (timed out|reset)|SSL_ERROR|schannel') { $kind = 'network' }
+    else { $kind = 'other' }
+    if ($kindCounts.ContainsKey($kind)) { $kindCounts[$kind]++ } else { $kindCounts[$kind] = 1 }
+    if ($LogCsv) {
+      $line = [string]::Format($inv, '{0},{1},{2},{3},{4},{5},{6},{7}', $i, $Label, $start.ToString('yyyy-MM-dd HH:mm:ss.fff', $inv),
+        $sw.ElapsedMilliseconds, $exitCode, $kind, $cpuAvg, $diskAvg)
+      [System.IO.File]::AppendAllText($LogCsv, $line + "`r`n", (New-Object System.Text.UTF8Encoding($false)))
+    }
     if (-not $failed) {
       $ok = Remove-EvidenceItem $cfg $BaseDir
-      Write-Host ("[{0}/{1}] 성공 exit=0 {2} ms 폴더삭제={3}" -f $i, $Runs, $sw.ElapsedMilliseconds, $ok)
+      Write-Host ("[{0}/{1}] 성공 exit=0 {2} ms CPU평균={3}% 폴더삭제={4}" -f $i, $Runs, $sw.ElapsedMilliseconds, $cpuAvg, $ok)
       continue
     }
 
@@ -288,6 +328,8 @@ try {
     [void]$sb.AppendLine("종료            : $(Get-Stamp $end)")
     [void]$sb.AppendLine("소요시간        : $($sw.ElapsedMilliseconds) ms")
     [void]$sb.AppendLine("스냅샷 시각     : $(Get-Stamp $snapTime)  (종료 후 $([int]($snapTime - $end).TotalMilliseconds) ms)")
+    [void]$sb.AppendLine("분류            : $kind  (eperm=마지막 rename 실패, network=GitHub 응답 문제, other)")
+    [void]$sb.AppendLine("실행 구간 평균   : CPU $cpuAvg % / 디스크 $diskAvg %  (시스템 전체, 성능 카운터)")
     [void]$sb.AppendLine("EPERM 문구 포함 : $(if ($eperm) { '예' } else { '아니오' })")
     [void]$sb.AppendLine("'Failed to finalize marketplace cache' 포함: $(if ($fin) { '예' } else { '아니오' })")
     [void]$sb.AppendLine('')
@@ -315,7 +357,7 @@ try {
     [System.IO.File]::WriteAllText($evFile, $sb.ToString(), (New-Object System.Text.UTF8Encoding($true)))
     $evidenceFiles += $evFile
     $failedDirs += $cfg
-    Write-Host ("[{0}/{1}] 실패 exit={2} {3} ms EPERM={4}" -f $i, $Runs, $exitCode, $sw.ElapsedMilliseconds, $(if ($eperm) { '예' } else { '아니오' })) -ForegroundColor Red
+    Write-Host ("[{0}/{1}] 실패 exit={2} {3} ms 분류={4} CPU평균={5}%" -f $i, $Runs, $exitCode, $sw.ElapsedMilliseconds, $kind, $cpuAvg) -ForegroundColor Red
     Write-Host "  증거 파일: $evFile"
     Write-Host "  실패한 설정 폴더는 증거로 남겼다. 확인 후 직접 삭제하라: $cfg"
 
@@ -327,5 +369,7 @@ try {
 
 Write-Host ''
 Write-Host "=== 요약: $done 회 실행 중 실패 $failCount 회 ==="
+Write-Host ("분류: " + (($kindCounts.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ' '))
+if ($LogCsv) { Write-Host "실행별 로그(CSV): $LogCsv" }
 foreach ($f in $evidenceFiles) { Write-Host "증거 파일: $f" }
 if ($failCount -eq 0) { Write-Host '증거 파일 없음 (실패 미재현)' }
