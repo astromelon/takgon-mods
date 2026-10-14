@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Added
+- `tools/release.mjs`: `--commit`·`--push` 때 릴리스 커밋에 주석 태그 `vx.y.z`를 만들고 `--push`가 커밋과 함께 태그를 올린다(`git push --follow-tags`). 같은 태그가 이미 있으면 파일을 바꾸기 전에 중단한다. 0.4.2~0.4.6 태그는 소급해서 달았다.
+
 ## [0.4.6] - 2026-10-13
 
 ### Changed

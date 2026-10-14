@@ -193,11 +193,12 @@ mods를 고쳐 다른 PC에 반영하려면:
 
    ```bash
    node tools/release.mjs patch              # 파일만 수정하고 diff 출력
-   node tools/release.mjs patch --push       # 수정 + 커밋 + push (--commit은 커밋까지만)
+   node tools/release.mjs patch --push       # 수정 + 커밋 + 태그 + push (--commit은 커밋·태그까지만)
    ```
 
    스크립트는 `.claude-plugin/plugin.json`의 `version`을 올리고, `[Unreleased]` 내용을 `## [x.y.z] - YYYY-MM-DD`
-   절로 옮기며, 커밋 메시지는 `build: x.y.z로 버전을 올리고 CHANGELOG 정리`로 만든다.
+   절로 옮기며, 커밋 메시지는 `build: x.y.z로 버전을 올리고 CHANGELOG 정리`로 만든다. `--commit`·`--push`에서는 그 커밋에
+   주석 태그 `vx.y.z`도 달고, `--push`는 커밋과 태그를 함께 올린다. 같은 태그가 이미 있으면 파일을 바꾸기 전에 멈춘다.
 3. 다른 PC에서 위 업데이트 명령 두 개를 순서대로 실행한다.
 
 CI는 `node tools/release.mjs --check`로 `plugin.json` 버전과 CHANGELOG 최상단 버전 절이 같은지 검사한다.

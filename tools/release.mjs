@@ -3,7 +3,7 @@
 //   node tools/release.mjs <x.y.z|patch|minor|major> [--commit] [--push]
 //   node tools/release.mjs --check   # plugin.json 버전 == CHANGELOG 최상단 버전 절인지 검사(CI용)
 //
-// 기본은 파일만 수정한다. --commit은 커밋, --push는 커밋 후 push(--push는 --commit을 포함한다).
+// 기본은 파일만 수정한다. --commit은 커밋하고 주석 태그 v<x.y.z>를 단다. --push는 커밋과 태그를 push한다(--commit을 포함).
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -63,6 +63,11 @@ if (!isGreater(next, currentVersion)) fail(`새 버전 ${next}는 현재 ${curre
 
 if (git('status', '--porcelain').trim()) fail('작업 트리가 깨끗하지 않다. 먼저 커밋하거나 stash한다.');
 
+const tag = `v${next}`;
+if ((flags.has('--commit') || flags.has('--push')) && git('tag', '--list', tag).trim()) {
+  fail(`태그 ${tag}가 이미 있다.`);
+}
+
 const start = changelog.indexOf(UNRELEASED);
 if (start === -1) fail(`CHANGELOG에 "${UNRELEASED}" 절이 없다.`);
 const bodyStart = start + UNRELEASED.length;
@@ -82,8 +87,10 @@ if (flags.has('--commit') || flags.has('--push')) {
   git('add', '.claude-plugin/plugin.json', 'CHANGELOG.md');
   git('commit', '-m', `build: ${next}로 버전을 올리고 CHANGELOG 정리\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`);
   console.log('커밋 완료');
+  git('tag', '-a', tag, '-m', tag);
+  console.log(`태그 ${tag} 생성`);
   if (flags.has('--push')) {
-    git('push');
+    git('push', '--follow-tags'); // 커밋과 그 커밋을 가리키는 주석 태그를 함께 올린다
     console.log('push 완료');
   }
 } else {
