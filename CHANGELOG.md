@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-10-16
+
 ### Added
 - `tools/test-store-backup.ps1`: `store-backup.ps1`을 가짜 설정 폴더에서 시험하는 34개 점검(백업·같은 이름/이름 변경 복원·깨진·배열·문자열 백업·경로 구분자가 든 `-Marketplace`·`installed_plugins.json` 변형·상대 경로·`-WhatIf`). Windows PowerShell 5.1과 PowerShell 7(`-Shell pwsh.exe`)에서 돌고, CI와 `tools/ci-local.mjs`에 연결했다. 실제 Claude Code 세션은 쓰지 않는다.
 
