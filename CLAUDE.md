@@ -80,9 +80,23 @@ CI(`.github/workflows/ci.yml`)는 Windows에서 Claude Code 2.1.296 고정으로
 
 - `claude-code/testing` 킷(`describe`/`test`/`expect`/`mock`) 사용. 테스트의 `$`에는 `store`가 없으므로 `mock.store(on, 초기값)`으로 주입.
 - 외부 연동은 하위 훅으로 mock하고, 엔진 거부는 `{ deny }`로 답한다(엔진 제약 7번). surface별 렌더는 `['terminal', 'desktop'] as const`로 반복해 검증(M4·M6·M8).
+- `tools/test-store-backup.ps1`은 `tools/store-backup.ps1`을 가짜 설정 폴더에서 시험한다(실제 세션·`~/.claude` 미사용). CI가 PowerShell 5.1과 7로
+  돌리고, 로컬은 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-store-backup.ps1`(7은 `-Shell pwsh.exe`).
+  `tools/*.ps1`은 UTF-8 BOM + LF로 둔다(`.gitattributes` 참고).
 - `tools/e2e`의 `probe_*` 시나리오는 엔진 제약 감시용이다. 실패하면 엔진이 고쳐졌을 수 있으니 제약 문서와 우회 코드를 다시 본다.
   시나리오 판정은 화면 문자열(pyte로 재구성)과 debug 로그 기준이라 Claude Code UI 문구가 바뀌면 함께 고친다.
 
-## 커밋
+## 커밋·릴리스
 
 Conventional Commits 접두사(`feat`/`fix`/`docs`/`test`/`build`) + 한국어 요약. 버전은 `.claude-plugin/plugin.json`.
+
+### 릴리스 이력과 실측 수치
+
+- **CHANGELOG의 이미 릴리스된 절은 소급해 고치지 않는다.** 실측 수치(예: EPERM 실패 횟수)는 그 시점의 기록이라, 나중에 새 실험으로
+  틀려져도 옛 절의 숫자를 바꾸지 않는다. 새 사실은 `[Unreleased]`에 새 항목으로 적고, README처럼 현재 상태를 말하는 문서만 최신
+  수치로 갱신한다. (오탈자·깨진 링크처럼 사실이 달라지지 않는 수정은 예외.)
+- 구 수치가 남은 곳에는 정정하지 말고 **"당시 기준" 문구를 덧붙여** 최신 상태가 어디 있는지 알린다. GitHub Release 노트(`gh release edit`)는
+  제목 아래에, 이슈 코멘트는 맨 위에 인용문으로 넣는다. 본문은 바꾸지 않는다.
+- 수치를 쓸 때는 분모(전체 횟수)와 조건(저부하/고부하, 어느 PC, 어느 기간)을 같이 적는다. 조건이 다른 실험은 한 확률로 합치지 않는다.
+- 릴리스는 `node tools/release.mjs <버전> --push`로 하고(커밋·주석 태그 `vX.Y.Z`·push), CI의 `Check release tags`가 태그와 버전 불일치를 잡는다.
+  GitHub Release 노트는 CHANGELOG 절을 그대로 옮긴다.

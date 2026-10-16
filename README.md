@@ -82,7 +82,8 @@ EPERM이 나던 PC는 `claude plugin marketplace remove takgon` 후 위 명령�
 
 파일이 많은 저장소(옛 `astromelon/takgon-mods` 마켓플레이스 소스)를 add하면 일부 Windows PC에서 아래 오류로 실패했다.
 이 PC의 임시 환경에서는 옛 방식이 13회 중 12회 실패했다. 파일 1개짜리 마켓플레이스(`astromelon/takgon-marketplace`)로
-분리한 뒤에는 101회 중 3회(연달아 발생, 이후 91회는 0건)로 줄었지만 없어지지는 않았다. 실패한 add는
+분리한 뒤에는 저부하에서 101회 중 3회(연달아 발생, 이후 91회는 0건)로 줄었지만 없어지지는 않았다. 이후 같은 PC에서 약 61회 중
+6회가 4분 안에 몰려 났고(전문 확보), 그 뒤 부하 통제 실험 126회와 5분 간격 8시간 감시 97회에서는 재현되지 않았다. 실패한 add는
 `Failed to finalize marketplace cache`로 시작하고, add 성공 뒤 install을 확인한 17회는 모두 성공했다. 다른 PC의 결과는
 확인하지 못했다.
 
@@ -143,20 +144,29 @@ CPU·디스크 부하만으로는 재현되지 않았고 원인은 아직 모른
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\store-backup.ps1 List      # store 파일·백업 폴더 목록(바꾸지 않음)
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\store-backup.ps1 Backup    # <설정 폴더>\backup-takgon-store-<시각>에 복사 후 해시 확인
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\store-backup.ps1 Restore   # 가장 최근 백업을 현재 마켓플레이스 파일명으로 복원(-WhatIf로 미리 보기)
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\store-backup.ps1 Restore   # store 파일이 든 가장 최근 백업을 현재 마켓플레이스 파일명으로 복원(-WhatIf로 미리 보기)
 ```
 
 `Restore`는 설치된 마켓플레이스 이름(`installed_plugins.json`)으로 파일명을 계산해, 이름이 같으면 덮어쓰고 이름이 바뀌었으면 새
-파일명으로 복사한다. 덮어쓰기 전에 현재 파일을 백업 폴더에 `before-restore-*`로 남기고, 깨진 JSON이거나 4 MiB를 넘는 백업,
-여러 파일 중 대상을 못 고르는 백업, 열린 Claude Code 세션이 있는 경우(`-Force`로 무시)에는 멈춘다. 가짜 설정 폴더로 20개 시나리오
-(백업·같은 이름 복원·이름 변경 복원·깨진 백업·`-WhatIf` 등)를 PowerShell 5.1과 7에서 확인했다. 실제 엔진 세션과 함께 돌려 본 것은
-아니고, 세션에서의 검증은 아래 수동 절차로 했다. 이 스크립트는 다음 릴리스부터 설치된 플러그인에 들어간다.
+파일명으로 복사한다. 덮어쓰기 전에 현재 파일을 백업 폴더에 `before-restore-*`로 남기고, 덮어쓴 결과가 백업과 다르면 그 파일로 되돌린다.
+다음 경우에는 멈춘다: JSON 객체가 아니거나 4 MiB를 넘는 백업, 여러 파일 중 대상을 못 고르는 백업, 설치된 마켓플레이스를 알 수 없거나
+둘 이상인 경우(`-Marketplace <이름>`으로 지정, 영문·숫자·`.`·`_`·`-`만 허용), 이름이 `claude`인 프로세스가 있는 경우(`-Force`로 무시).
+마지막 검사는 세션 수가 아니라 `claude`라는 이름의 프로세스를 세므로 설정 폴더가 다른 세션이나 다른 프로세스도 세고, `node.exe`로
+도는 세션은 세지 못한다. 그래서 확인용으로만 믿는다. `-WhatIf`는 아무것도 쓰지 않으므로 이 경우 경고만 내고 미리 보기를 계속한다.
+
+가짜 설정 폴더로 하는 시험은 저장소에 있다(`tools\test-store-backup.ps1`, 34개 점검: 백업·같은 이름 복원·이름 변경 복원·깨진/배열/문자열
+백업·경로 구분자가 든 `-Marketplace`·`installed_plugins.json` 변형·상대 경로·`-WhatIf` 등). CI가 Windows PowerShell 5.1과 PowerShell 7에서
+돌린다. 이 시험은 실제 Claude Code 세션을 쓰지 않으므로, 임시 `CLAUDE_CONFIG_DIR`의 실제 세션으로도 한 번 확인했다(Windows PowerShell 5.1,
+위 수정본을 저장소에서 직접 실행, 각 단계 1회). `/pin`으로 핀 1개를 만들어 `Backup` → 핀을 1개 더 만든 뒤 `Restore`하자 세션의
+`/pin list`가 다시 1개가 되었다. 마켓플레이스 이름을 `takgon-alt`로 바꿔 설치하자 핀이 비고 새 파일이 생겼으며, `-Marketplace` 없이
+`Restore`만 해도 새 파일명으로 복사되어 핀이 돌아왔다(이전 새 파일은 `before-restore-*`로 남았다). 이 스크립트는 v0.4.8부터 설치된
+플러그인의 `tools/`에 들어 있지만, 위 수정은 다음 릴리스에 들어간다.
 
 **수동으로 하려면** (열린 세션을 모두 닫은 뒤)
 
 ```powershell
 $store = "$env:USERPROFILE\.claude\plugins\store"
-$bak = "$env:USERPROFILE\.claude\backup-takgon-store-$(Get-Date -Format yyyyMMdd-HHmm)"
+$bak = "$env:USERPROFILE\.claude\backup-takgon-store-$(Get-Date -Format yyyyMMdd-HHmmss)"
 New-Item -ItemType Directory $bak | Out-Null
 Copy-Item "$store\takgon-mods_*.json" $bak
 Get-ChildItem $bak   # 파일이 보이는지 확인

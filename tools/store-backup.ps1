@@ -13,7 +13,8 @@
            - 파일명이 다르면(마켓플레이스 이름이 바뀐 경우) 백업을 새 파일명으로 복사한다.
            덮어쓰기 전에 현재 파일을 백업 폴더에 before-restore-* 로 남긴다.
 
-  Claude Code 세션이 열려 있으면 엔진이 파일을 덮어쓸 수 있어, Restore는 열린 세션이 있으면 멈춘다(-Force로 무시).
+  Claude Code 세션이 열려 있으면 엔진이 파일을 덮어쓸 수 있어, Restore는 이름이 claude인 프로세스가 있으면 멈춘다(-Force로 무시,
+  -WhatIf는 미리 보기라 경고만 낸다). 세션 수가 아니라 프로세스 수이고 설정 폴더가 다른 세션도 세는 보수적 검사다.
   실제 설정 폴더는 CLAUDE_CONFIG_DIR 환경변수가 있으면 그 값, 없으면 %USERPROFILE%\.claude 이다.
 
 .PARAMETER Action
@@ -60,10 +61,17 @@ $MaxBytes = 4MB   # store 파일 상한(4 MiB)
 if (-not $ConfigDir) {
   if ($env:CLAUDE_CONFIG_DIR) { $ConfigDir = $env:CLAUDE_CONFIG_DIR } else { $ConfigDir = Join-Path $env:USERPROFILE '.claude' }
 }
-$ConfigDir = [System.IO.Path]::GetFullPath($ConfigDir)
+# 상대 경로는 프로세스 cwd가 아니라 PowerShell의 현재 위치 기준으로 푼다.
+$ConfigDir = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($ConfigDir)
 $StoreDir = Join-Path $ConfigDir 'plugins\store'
 
+# 마켓플레이스 이름은 파일명에 들어가므로 경로 구분자·공백 등을 막는다.
+function Assert-MarketplaceName([string]$market) {
+  if ($market -notmatch '^[A-Za-z0-9._-]+$') { throw "마켓플레이스 이름이 올바르지 않다(영문·숫자·.·_·-만 허용): $market" }
+}
+
 function Get-StoreFileName([string]$market) {
+  Assert-MarketplaceName $market
   $sha = [System.Security.Cryptography.SHA256]::Create()
   $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("$PluginName@$market"))
   $hash = (($bytes | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 12)
@@ -73,11 +81,16 @@ function Get-StoreFileName([string]$market) {
 function Get-InstalledMarketplace {
   $path = Join-Path $ConfigDir 'plugins\installed_plugins.json'
   if (-not (Test-Path -LiteralPath $path)) { return $null }
-  $json = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
-  if (-not ($json.PSObject.Properties.Name -contains 'plugins')) { return $null }
-  $names = @($json.plugins.PSObject.Properties.Name | Where-Object { $_ -like "$PluginName@*" })
+  try { $json = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return $null }
+  # StrictMode에서는 속성이 하나도 없는 객체의 .Name 접근이 예외라, 속성 목록을 먼저 배열로 만든 뒤 이름을 꺼낸다.
+  if ($null -eq $json -or $json -isnot [System.Management.Automation.PSCustomObject]) { return $null }
+  $top = @($json.PSObject.Properties | ForEach-Object { $_.Name })
+  if ($top -notcontains 'plugins' -or $json.plugins -isnot [System.Management.Automation.PSCustomObject]) { return $null }
+  $names = @($json.plugins.PSObject.Properties | ForEach-Object { $_.Name } | Where-Object { $_ -like "$PluginName@*" } |
+    ForEach-Object { $_.Substring($PluginName.Length + 1) } | Sort-Object -Unique)
   if ($names.Count -eq 0) { return $null }
-  return $names[0].Substring($PluginName.Length + 1)
+  if ($names.Count -gt 1) { throw "$PluginName 이 여러 마켓플레이스에 설치돼 있다: $($names -join ', '). -Marketplace로 지정한다." }
+  return $names[0]
 }
 
 # store 파일이 올바른 JSON 객체인지 확인하고 키 개수를 돌려준다. 문제가 있으면 예외.
@@ -85,10 +98,12 @@ function Test-StoreFile([string]$path) {
   $item = Get-Item -LiteralPath $path
   if ($item.Length -gt $MaxBytes) { throw "크기가 4 MiB 상한을 넘는다: $path ($($item.Length) 바이트)" }
   $obj = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
-  if ($null -eq $obj) { throw "비어 있거나 JSON 객체가 아니다: $path" }
+  if ($null -eq $obj -or $obj -isnot [System.Management.Automation.PSCustomObject]) { throw "JSON 객체가 아니다(비어 있거나 배열·문자열 등): $path" }
   return @($obj.PSObject.Properties).Count
 }
 
+# 이름이 claude인 프로세스의 수다(세션 수가 아니다). 설정 폴더가 다른 세션이나 claude 이름의 다른 프로세스도 세고,
+# node.exe로 도는 세션(npm 설치)은 세지 못한다. 그래서 보수적인 경고로만 쓴다.
 function Get-OpenSessionCount {
   return @(Get-Process -Name 'claude' -ErrorAction SilentlyContinue).Count
 }
@@ -101,7 +116,9 @@ function Get-FileHashHex([string]$path) {
 }
 
 function Get-LatestBackupDir {
-  $dirs = @(Get-ChildItem -LiteralPath $ConfigDir -Directory -Filter 'backup-takgon-store-*' -ErrorAction SilentlyContinue | Sort-Object Name)
+  $dirs = @(Get-ChildItem -LiteralPath $ConfigDir -Directory -Filter 'backup-takgon-store-*' -ErrorAction SilentlyContinue |
+    Where-Object { @(Get-ChildItem -LiteralPath $_.FullName -Filter "${PluginName}_*.json" -ErrorAction SilentlyContinue).Count -gt 0 } |
+    Sort-Object Name)
   if ($dirs.Count -eq 0) { return $null }
   return $dirs[-1].FullName
 }
@@ -119,7 +136,7 @@ switch ($Action) {
       try { $keys = "키 $(Test-StoreFile $f.FullName)개" } catch { $keys = "읽기 실패: $($_.Exception.Message)" }
       Write-Host ("  {0}  {1:N0} 바이트  {2:yyyy-MM-dd HH:mm}  {3}" -f $f.Name, $f.Length, $f.LastWriteTime, $keys)
     }
-    $market = Get-InstalledMarketplace
+    try { $market = Get-InstalledMarketplace } catch { $market = $null; Write-Warning $_.Exception.Message }
     if ($market) { Write-Host ("  현재 설치: {0}@{1} → 기대 파일명 {2}" -f $PluginName, $market, (Get-StoreFileName $market)) }
     Write-Host ''
     Write-Host '[백업 폴더]'
@@ -135,12 +152,12 @@ switch ($Action) {
     $files = @(Get-ChildItem -LiteralPath $StoreDir -Filter "${PluginName}_*.json" -ErrorAction SilentlyContinue)
     if ($files.Count -eq 0) { throw "백업할 store 파일이 없다: $StoreDir\${PluginName}_*.json" }
     if (-not $BackupDir) { $BackupDir = Join-Path $ConfigDir ("backup-takgon-store-{0:yyyyMMdd-HHmmss}" -f (Get-Date)) }
-    $BackupDir = [System.IO.Path]::GetFullPath($BackupDir)
+    $BackupDir = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($BackupDir)
     if ((Test-Path -LiteralPath $BackupDir) -and @(Get-ChildItem -LiteralPath $BackupDir -Force).Count -gt 0) {
       throw "백업 폴더가 비어 있지 않다: $BackupDir"
     }
     if ((Get-OpenSessionCount) -gt 0) {
-      Write-Warning '열린 Claude Code 세션이 있다. 세션이 쓰는 중이면 복사본이 최신이 아닐 수 있으니 모두 닫고 다시 하는 편이 안전하다.'
+      Write-Warning '이름이 claude인 프로세스가 있다(Claude Code 세션이 열려 있을 수 있다). 세션이 쓰는 중이면 복사본이 최신이 아닐 수 있으니 모두 닫고 다시 하는 편이 안전하다.'
     }
     foreach ($f in $files) { [void](Test-StoreFile $f.FullName) }   # 깨진 파일을 백업본으로 믿지 않도록 먼저 읽어 본다
     if ($PSCmdlet.ShouldProcess($BackupDir, "store 파일 $($files.Count)개 백업")) {
@@ -157,7 +174,7 @@ switch ($Action) {
   'Restore' {
     if (-not $BackupDir) { $BackupDir = Get-LatestBackupDir }
     if (-not $BackupDir -or -not (Test-Path -LiteralPath $BackupDir)) { throw "복원할 백업 폴더가 없다. -BackupDir로 지정한다." }
-    $BackupDir = [System.IO.Path]::GetFullPath($BackupDir)
+    $BackupDir = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($BackupDir)
     $sources = @(Get-ChildItem -LiteralPath $BackupDir -Filter "${PluginName}_*.json")
     if ($sources.Count -eq 0) { throw "백업 폴더에 ${PluginName}_*.json 이 없다: $BackupDir" }
 
@@ -177,20 +194,24 @@ switch ($Action) {
     Write-Host "방식      : $mode"
 
     $open = Get-OpenSessionCount
-    if ($open -gt 0 -and -not $Force) {
-      throw "열린 Claude Code 세션이 $open 개 있다. 모두 닫고 다시 실행한다(무시하려면 -Force)."
+    if ($open -gt 0 -and -not $Force -and -not $WhatIfPreference) {
+      throw "이름이 claude인 프로세스가 $open 개 있다(Claude Code 세션이 열려 있을 수 있다). 모두 닫고 다시 실행한다(무시하려면 -Force)."
     }
-    if ($open -gt 0) { Write-Warning "열린 세션이 $open 개 있지만 -Force라 계속한다." }
+    if ($open -gt 0) { Write-Warning "이름이 claude인 프로세스가 $open 개 있지만 $(if ($WhatIfPreference) { '-WhatIf라 미리 보기만 하므로' } else { '-Force라' }) 계속한다." }
 
     if ($PSCmdlet.ShouldProcess($target, "백업 $($source.Name) 로 복원")) {
       New-Item -ItemType Directory -Force -Path $StoreDir | Out-Null
+      $keep = $null
       if (Test-Path -LiteralPath $target) {
         $keep = Join-Path $BackupDir ("before-restore-{0:yyyyMMdd-HHmmss}-{1}" -f (Get-Date), $targetName)
         Copy-Item -LiteralPath $target -Destination $keep
         Write-Host "현재 파일 보관: $keep"
       }
       Copy-Item -LiteralPath $source.FullName -Destination $target -Force
-      if ((Get-FileHashHex $source.FullName) -ne (Get-FileHashHex $target)) { throw "복원된 파일이 백업과 다르다: $target" }
+      if ((Get-FileHashHex $source.FullName) -ne (Get-FileHashHex $target)) {
+        if ($keep -and (Test-Path -LiteralPath $keep)) { Copy-Item -LiteralPath $keep -Destination $target -Force; throw "복원된 파일이 백업과 달라 이전 파일로 되돌렸다: $target" }
+        throw "복원된 파일이 백업과 다르다: $target"
+      }
       Write-Host '복원 완료. Claude Code를 다시 열어 /pin list·/panel로 데이터가 보이는지 확인한다.'
     }
   }
