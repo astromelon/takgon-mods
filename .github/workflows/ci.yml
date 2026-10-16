@@ -44,6 +44,15 @@ jobs:
       - name: Version
         run: claude --version
 
+      # store 백업·복원 스크립트를 가짜 설정 폴더에서 시험한다(Windows PowerShell 5.1과 PowerShell 7). 실제 Claude Code 세션은 쓰지 않는다.
+      - name: Test store-backup script (PowerShell 5.1)
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-store-backup.ps1
+
+      - name: Test store-backup script (PowerShell 7)
+        shell: cmd
+        run: pwsh -NoProfile -File tools/test-store-backup.ps1 -Shell pwsh.exe
+
       - name: Validate plugin
         run: claude plugin validate .
 

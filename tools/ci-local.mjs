@@ -25,6 +25,7 @@ const steps = [
     : []),
   { name: 'Check release version', command: 'node tools/release.mjs --check' },
   { name: 'Check release tags', command: 'node tools/release.mjs --check-tags' },
+  { name: 'Test store-backup script (PS 5.1)', command: 'powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-store-backup.ps1' },
   { name: 'Validate plugin', command: 'claude plugin validate .' },
   { name: 'Test plugin', command: 'claude plugin test .' },
   { name: 'Test e2e harness', command: 'python -m unittest discover -s tools/e2e -p "test_*.py"' },

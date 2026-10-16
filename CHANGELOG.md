@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### Added
+- `tools/test-store-backup.ps1`: `store-backup.ps1`을 가짜 설정 폴더에서 시험하는 34개 점검(백업·같은 이름/이름 변경 복원·깨진·배열·문자열 백업·경로 구분자가 든 `-Marketplace`·`installed_plugins.json` 변형·상대 경로·`-WhatIf`). Windows PowerShell 5.1과 PowerShell 7(`-Shell pwsh.exe`)에서 돌고, CI와 `tools/ci-local.mjs`에 연결했다. 실제 Claude Code 세션은 쓰지 않는다.
+
+### Fixed
+- `tools/store-backup.ps1`: 독립 리뷰에서 나온 결함을 고쳤다. `-Marketplace`에 경로 구분자가 있으면 store 폴더 밖에 쓰던 문제(이름 검증 추가), `installed_plugins.json`이 비었거나 `plugins`가 `null`·`{}`일 때 예외로 끝나던 문제, 둘 이상의 마켓플레이스에 설치돼 있으면 조용히 첫 항목을 고르던 문제(중단하고 `-Marketplace` 요구), 배열·문자열 JSON을 정상 store로 보던 문제, 상대 `-ConfigDir`·`-BackupDir`을 PowerShell 현재 위치가 아닌 프로세스 cwd로 풀던 문제, 비어 있거나 실패한 최신 백업 폴더 때문에 이전 백업으로 넘어가지 못하던 문제, 열린 세션이 있으면 `-WhatIf` 미리 보기도 막히던 문제. 덮어쓴 결과가 백업과 다르면 보관한 이전 파일로 되돌린다.
+
+### Changed
+- README: `store-backup.ps1`을 임시 `CLAUDE_CONFIG_DIR`의 실제 Claude Code 세션으로 확인한 결과를 반영했다(백업 → 변경 → 복원으로 `/pin list`가 되돌아옴, 마켓플레이스 이름 변경 뒤 새 파일명으로 복원). `Backup`의 경고 문구도 실제 검사 범위(이름이 `claude`인 프로세스)에 맞췄다.
+- README: store 백업·복원 절의 안내를 실제 동작에 맞췄다. 열린 세션 검사는 세션 수가 아니라 `claude`라는 이름의 프로세스를 세며(설정 폴더가 다른 세션도 세고 `node.exe`로 도는 세션은 못 센다), 스크립트가 v0.4.8부터 설치본에 들어 있고, 스크립트 백업 폴더 이름은 `yyyyMMdd-HHmmss`다. EPERM 절에 이후 관찰(약 61회 중 6회, 통제 실험 126회·감시 97회 0건)을 더했다.
+
 ## [0.4.8] - 2026-10-16
 
 ### Changed
