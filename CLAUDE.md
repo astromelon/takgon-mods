@@ -98,5 +98,10 @@ Conventional Commits 접두사(`feat`/`fix`/`docs`/`test`/`build`) + 한국어 �
 - 구 수치가 남은 곳에는 정정하지 말고 **"당시 기준" 문구를 덧붙여** 최신 상태가 어디 있는지 알린다. GitHub Release 노트(`gh release edit`)는
   제목 아래에, 이슈 코멘트는 맨 위에 인용문으로 넣는다. 본문은 바꾸지 않는다.
 - 수치를 쓸 때는 분모(전체 횟수)와 조건(저부하/고부하, 어느 PC, 어느 기간)을 같이 적는다. 조건이 다른 실험은 한 확률로 합치지 않는다.
+- **감시 CSV는 수치의 원자료이므로 지우지 않는다.** 이슈 본문 표·코멘트의 수치가 나온 5분 간격 감시 CSV(`mon-*/av.csv` 또는
+  `capture-add-failure.ps1 -LogCsv` 출력)는 감시가 끝나면 `.claude/takgon/monitor/mon-<시작일YYYYMMDD>[-라벨].csv`로 옮겨 보관한다
+  (git 제외: 폴더에 `*` 한 줄 `.gitignore`). scratchpad·`%TEMP%` 정리에서도 이 CSV만은 남긴다. 구간마다 파일을 따로 두고 이어붙이지 않으며,
+  이슈 표의 한 행이 CSV 한 파일에 대응한다. 표의 합계가 의심되면 CSV로 다시 계산해 맞춘다. 보관 전에 열에 경로·사용자명이 없는지 확인한다.
+  로그·증거 파일(`takgon-evidence-*.txt`)에는 경로와 프로세스 명령줄이 들어 있어 보존 대상이 아니고, 올릴 때 가린다.
 - 릴리스는 `node tools/release.mjs <버전> --push`로 하고(커밋·주석 태그 `vX.Y.Z`·push), CI의 `Check release tags`가 태그와 버전 불일치를 잡는다.
   GitHub Release 노트는 CHANGELOG 절을 그대로 옮긴다.

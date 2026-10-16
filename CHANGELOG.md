@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Changed
+- README·`tools/store-backup.ps1`: 열린 세션 검사 설명에서 "`node.exe`로 도는 세션은 세지 못한다"는 문장을 바로잡았다. npm으로 설치한 Claude Code(Windows 2.1.301, `node cli-wrapper.cjs`)도 세션은 네이티브 `claude.exe` 자식 프로세스로 돌아 `Get-Process -Name claude`가 세며, 세션을 띄우면 수가 하나 늘고 닫으면 줄었다. 설정 폴더가 다른 세션과 이름이 같은 다른 프로세스도 센다는 점은 그대로다.
+
 ## [0.4.9] - 2026-10-16
 
 ### Added
