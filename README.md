@@ -151,8 +151,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\store-backup.ps1 Resto
 파일명으로 복사한다. 덮어쓰기 전에 현재 파일을 백업 폴더에 `before-restore-*`로 남기고, 덮어쓴 결과가 백업과 다르면 그 파일로 되돌린다.
 다음 경우에는 멈춘다: JSON 객체가 아니거나 4 MiB를 넘는 백업, 여러 파일 중 대상을 못 고르는 백업, 설치된 마켓플레이스를 알 수 없거나
 둘 이상인 경우(`-Marketplace <이름>`으로 지정, 영문·숫자·`.`·`_`·`-`만 허용), 이름이 `claude`인 프로세스가 있는 경우(`-Force`로 무시).
-마지막 검사는 세션 수가 아니라 `claude`라는 이름의 프로세스를 세므로 설정 폴더가 다른 세션이나 다른 프로세스도 세고, `node.exe`로
-도는 세션은 세지 못한다. 그래서 확인용으로만 믿는다. `-WhatIf`는 아무것도 쓰지 않으므로 이 경우 경고만 내고 미리 보기를 계속한다.
+마지막 검사는 세션 수가 아니라 `claude`라는 이름의 프로세스를 세므로 설정 폴더가 다른 세션이나 이름이 같은 다른 프로세스도 센다.
+그래서 확인용으로만 믿는다. npm으로 설치한 Claude Code도 세션은 네이티브 `claude.exe`로 돌아(`node.exe`는 그것을 띄우는 래퍼) 세어진다
+(Windows 2.1.301에서 `node cli-wrapper.cjs`로 띄워 `claude` 프로세스 수가 하나 늘어나는 것을 확인했다). `-WhatIf`는 아무것도 쓰지 않으므로
+이 경우 경고만 내고 미리 보기를 계속한다.
 
 가짜 설정 폴더로 하는 시험은 저장소에 있다(`tools\test-store-backup.ps1`, 34개 점검: 백업·같은 이름 복원·이름 변경 복원·깨진/배열/문자열
 백업·경로 구분자가 든 `-Marketplace`·`installed_plugins.json` 변형·상대 경로·`-WhatIf` 등). CI가 Windows PowerShell 5.1과 PowerShell 7에서

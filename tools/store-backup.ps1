@@ -102,8 +102,8 @@ function Test-StoreFile([string]$path) {
   return @($obj.PSObject.Properties).Count
 }
 
-# 이름이 claude인 프로세스의 수다(세션 수가 아니다). 설정 폴더가 다른 세션이나 claude 이름의 다른 프로세스도 세고,
-# node.exe로 도는 세션(npm 설치)은 세지 못한다. 그래서 보수적인 경고로만 쓴다.
+# 이름이 claude인 프로세스의 수다(세션 수가 아니다). 설정 폴더가 다른 세션이나 claude 이름의 다른 프로세스도 센다. 그래서
+# 보수적인 경고로만 쓴다. npm 설치본도 세션은 네이티브 claude.exe로 돌아(node.exe는 그것을 띄우는 래퍼) 세어진다.
 function Get-OpenSessionCount {
   return @(Get-Process -Name 'claude' -ErrorAction SilentlyContinue).Count
 }
