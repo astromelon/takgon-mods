@@ -7,6 +7,9 @@
 import type { EditTarget, Lang } from '../../types'
 import { tr } from './messages'
 
+export { parseHeadlessOutput } from '../shared/headless'
+export type { HeadlessResult } from '../shared/headless'
+
 /** 발췌 상한(문자). */
 export const EXCERPT_MAX = 2000
 
@@ -126,13 +129,18 @@ export const judgeEdit = (text: string, oldString: string, start: number, end: n
   if (needle === '') {
     return { isAllowed: false, reason: 'not-found' }
   }
+  // 줄 번호는 직전 매치 위치부터 이어서 센다(매치마다 처음부터 세면 큰 파일에서 O(n·m)).
+  const needleLines = countNewlines(needle)
   let matches = 0
+  let line = 1
+  let scanned = 0
   for (let at = body.indexOf(needle); at !== -1; at = body.indexOf(needle, at + needle.length)) {
     matches += 1
-    const from = countNewlines(body.slice(0, at)) + 1
-    const to = from + countNewlines(needle)
-    if (from < start || to > end) {
-      return { isAllowed: false, reason: 'outside', lines: [from, to] }
+    line += countNewlines(body.slice(scanned, at))
+    scanned = at
+    const to = line + needleLines
+    if (line < start || to > end) {
+      return { isAllowed: false, reason: 'outside', lines: [line, to] }
     }
   }
   return matches === 0 ? { isAllowed: false, reason: 'not-found' } : { isAllowed: true, matches }
@@ -142,31 +150,6 @@ export const judgeEdit = (text: string, oldString: string, start: number, end: n
 export const lineDelta = (oldString: string, newString: string, matches: number): number =>
   (countNewlines(newString.replace(/\r\n/g, '\n')) - countNewlines(oldString.replace(/\r\n/g, '\n'))) *
   matches
-
-/** headless 스크립트 결과(stdout 마지막 줄 JSON). */
-export type HeadlessResult = {
-  ok: boolean
-  status: number
-  title?: string
-  consoleErrors: string[]
-  screenshot?: string
-  element?: { selector: string; computedStyle: Record<string, string>; screenshot?: string }
-  error?: string
-}
-
-/** stdout의 마지막 비어 있지 않은 줄을 JSON으로 읽는다. 아니면 `undefined`. */
-export const parseHeadlessOutput = (stdout: string): HeadlessResult | undefined => {
-  const last = stdout.split(/\r?\n/).filter(line => line.trim() !== '').at(-1)
-  if (last === undefined) {
-    return undefined
-  }
-  try {
-    const value: unknown = JSON.parse(last)
-    return typeof value === 'object' && value !== null && 'ok' in value ? (value as HeadlessResult) : undefined
-  } catch {
-    return undefined
-  }
-}
 
 /** 발췌 안의 백틱보다 긴 코드 펜스. */
 const fenceFor = (text: string): string => {

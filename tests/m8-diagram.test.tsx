@@ -4,6 +4,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import {
   diagramHash,
   extractMermaid,
+  canRetryViaCmd,
   imageCells,
   keepRecent,
   slimSvg,
@@ -80,8 +81,11 @@ type World = {
  * 엔진 자리: 세션·루트·파일·프로세스·toast·클립보드를 답한다.
  * `mmdc`는 `mode`에 따라 성공(svg·png 파일 생성) / 실행 불가(reject) / 오류 종료로 답한다.
  */
+let clock: ReturnType<typeof mock.clock>
+
 const engine = (on: On, mode: 'ok' | 'missing' | 'fail'): World => {
   const world: World = { runs: [], toasts: [], files: new Map(), copied: [] }
+  clock = mock.clock(on)
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.root', () => ({ value: 'C:/proj' }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
@@ -100,7 +104,12 @@ const engine = (on: On, mode: 'ok' | 'missing' | 'fail'): World => {
     world.copied.push(e.text)
     return { value: { isCopied: true } }
   })
+  on('env.get', () => ({ value: undefined }))
   on('process.run', ($, e): { value: ProcessRunResult } => {
+    // 타이머가 돌면 M5의 git 조회도 오므로 mmdc만 기록한다.
+    if (e.argv[0] === 'git') {
+      return { value: { exitCode: 1, stdout: '', stderr: '', ...UNCUT } }
+    }
     world.runs.push([...e.argv])
     if (mode === 'missing') {
       throw new Error('spawn mmdc ENOENT')
@@ -128,6 +137,15 @@ const engineMessage = (on: On): void => {
 
 const PROPS = { text: ANSWER, isFirstOfReply: true }
 
+describe('cmd 재시도 판정(순수)', () => {
+  test('메타문자가 없는 인자만 재시도한다', () => {
+    expect(canRetryViaCmd(['-i', 'C:/proj/.claude/takgon/diagram/a.mmd', '-o', 'C:/proj/a.svg'])).toBe(true)
+    for (const bad of ['C:/R&D/a.mmd', 'a|b', 'a^b', '%PATH%', 'a<b', 'a>b', 'a"b']) {
+      expect(canRetryViaCmd(['-i', bad])).toBe(false)
+    }
+  })
+})
+
 describe('turn.complete 사전 렌더', () => {
   test('mmdc 성공: svg·png를 만들고 같은 코드는 다시 렌더하지 않는다', async ($, on) => {
     const world = engine(on, 'ok')
@@ -135,7 +153,10 @@ describe('turn.complete 사전 렌더', () => {
     await $.session.start(START)
 
     await $.turn.complete(complete(ANSWER))
+
+    await clock.settle()
     await $.turn.complete(complete(ANSWER))
+    await clock.settle()
 
     expect(world.files.get(`${DIR}/${HASH}.mmd`)).toBe(FLOW)
     expect(world.files.get('C:/proj/.claude/takgon/.gitignore')).toBe('*\n')
@@ -152,7 +173,10 @@ describe('turn.complete 사전 렌더', () => {
     await $.session.start(START)
 
     await $.turn.complete(complete(ANSWER))
+
+    await clock.settle()
     await $.turn.complete(complete(ANSWER))
+    await clock.settle()
 
     expect(world.runs.slice(0, 2)).toEqual([
       ['mmdc', '-i', `${DIR}/${HASH}.mmd`, '-o', `${DIR}/${HASH}.svg`],
@@ -162,12 +186,27 @@ describe('turn.complete 사전 렌더', () => {
     expect(world.toasts[0]).toContain('npm i -g @mermaid-js/mermaid-cli')
   })
 
+  test('turn.complete는 렌더를 기다리지 않고, 진행 중이면 겹쳐 돌리지 않는다', async ($, on) => {
+    const world = engine(on, 'ok')
+    mock.store(on)
+    await $.session.start(START)
+
+    await $.turn.complete(complete(ANSWER))
+    expect(world.runs).toEqual([])
+    await $.turn.complete(complete(ANSWER))
+    await clock.settle()
+
+    expect(world.runs).toHaveLength(2)
+  })
+
   test('모듈이 꺼져 있으면 아무것도 실행하지 않는다', async ($, on) => {
     const world = engine(on, 'ok')
     mock.store(on, { 'g/core/modules': { diagram: false } })
     await $.session.start(START)
 
     await $.turn.complete(complete(ANSWER))
+
+    await clock.settle()
 
     expect(world.runs).toEqual([])
   })
@@ -195,7 +234,9 @@ describe('AssistantMessage 표시', () => {
     mock.store(on)
     await $.session.start(START)
     await $.turn.complete(complete(ANSWER))
+    await clock.settle()
     await $.turn.complete(complete(`${ANSWER}\n\n\`\`\`mermaid\ngraph LR\n  X-->Y\n\`\`\``))
+    await clock.settle()
 
     const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'desktop', component: 'AssistantMessage', props: PROPS })
     expect(await ui.find({ type: 'Svg' })).toBeUndefined()
@@ -210,6 +251,7 @@ describe('AssistantMessage 표시', () => {
     mock.store(on)
     await $.session.start(START)
     await $.turn.complete(complete(ANSWER))
+    await clock.settle()
 
     const desktop = await $.ui.mount({ plugin: 'takgon-mods', surface: 'desktop', component: 'AssistantMessage', props: PROPS })
     expect((await desktop.find({ type: 'Svg' }))?.props).toMatchObject({ source: SVG, alt: 'mermaid 다이어그램' })
@@ -237,6 +279,7 @@ describe('AssistantMessage 표시', () => {
     mock.store(on)
     await $.session.start(START)
     await $.turn.complete(complete(ANSWER))
+    await clock.settle()
 
     const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'desktop', component: 'AssistantMessage', props: PROPS })
     await ui.press({ key: `src-${HASH}` })

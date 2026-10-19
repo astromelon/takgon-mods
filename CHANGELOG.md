@@ -5,6 +5,30 @@
 
 ## [Unreleased]
 
+### Fixed
+- M2: Windows에서 "외부 브라우저로 열기"가 `cmd /c start`를 거쳐 URL의 `&`·`|`·`^`가 명령으로 실행될 수 있던 문제를 고쳤다. `rundll32 url.dll,FileProtocolHandler`로 열고, http(s)가 아닌 URL은 열지 않는다.
+- M8: `mmdc`를 `cmd /c`로 재시도할 때 Windows가 아니거나 경로에 `& | ^ % < > "`가 있으면 재시도하지 않는다.
+- M8: 다이어그램 미리 렌더를 타이머로 떼어 내 턴 마무리를 붙잡지 않게 하고, 한 번에 하나만 돌게 했다.
+- M6: 핀 텍스트를 2,000자로 제한한다(긴 응답을 `/pin`하면 공유 store 4 MiB 상한을 채울 수 있었다). 저장된 긴 핀도 복원할 때 자른다.
+- M4·M6: 할 일·핀을 바꿀 때 읽기와 쓰기 사이에 다른 변경이 끼어 유실되던 문제를 고쳤다(atom 안에서 계산한 결과를 store에 쓴다).
+- M4: Next-steps fork가 멈추면 이후로 영영 돌지 않던 문제를 고쳤다(5분 지나면 멈춘 것으로 보고 다시 시작).
+- M5: PR/MR 갱신이 겹쳐 돌 때(60초 폴링·턴 종료·복원) 진행 중이면 건너뛰어, git·gh·glab 프로세스가 동시에 뜨고 늦게 끝난 옛 결과가 새 결과를 덮던 문제를 고쳤다.
+- M5: 연동 모듈을 끄면 마지막 PR 배지가 프롬프트 위 band에 남던 문제를 고쳤다.
+- `/mods panel constructor`처럼 `Object.prototype` 속성 이름을 on/off로 받아 모듈이 켜짐으로 처리되던 문제를 고쳤다. 이제 사용법을 보여 준다.
+- M2·M6·M8: 목록으로 그리는 요소에 빠졌던 key를 붙였다. M6는 사용량 경고마다 store를 읽던 것을 state 값으로 대체했다.
+- M2: headless 실행이 시간 초과로 거부돼도 "node 없음"으로 안내하던 것을 고쳤다. 엔진이 시작 실패와 시간 초과를 같은 거부로 알리므로 걸린 시간으로 가른다(제한 시간의 90% 이상이면 headless 실패).
+- M7: 자동 생성과 `/tk-handoff`가 겹쳐 인수인계 파일이 둘 생기던 문제를 고쳤다(이미 만드는 중이면 안내만 하고, 5분 넘게 끝나지 않으면 멈춘 것으로 본다).
+- M3: 큰 파일에서 `replace_all` 매치가 많을 때 범위 판정이 매치마다 처음부터 줄 수를 세던 것을 이어서 세도록 고쳤다.
+- `tools/headless.mjs`: 응답을 받지 못한 경우(`status` 0)를 `ok: true`로 내던 것을 `false`로 고쳤다.
+
+### Changed
+- M5: GitLab 판별 기준을 바꿨다. 원격 호스트 이름에 `gitlab`이 들어 있을 때만 `glab`으로 MR을 조회한다. `gitlab`이 없는 사내 호스트, Bitbucket, Azure DevOps 등은 배지를 숨긴다(이전에는 github.com이 아니면 전부 GitLab으로 봤다). 원격 URL의 경로·사용자 정보에 든 이름은 호스트로 보지 않는다.
+- M4·M6: 할 일 목록 검증(`toTasks`)과 터미널 폭 맞춤(`fit`)을 `src/shared/`로 합쳤다. 같은 store 키를 읽는데 M4는 형식이 틀린 항목을 버리고 M6는 보정하던 차이를 없애, id·text가 문자열인 항목은 항상 보존한다(이전에 M4가 버리던 일부 항목이 이제 남을 수 있다). M4 띠의 줄임 표시도 M6와 같은 규칙(공백 압축, 이모지 2칸)을 쓴다.
+- M2·M3: headless 출력 해석을 `src/shared/headless.ts`로 합치고 M3도 M2의 엄격한 검증을 쓴다(`element`가 있으면 `selector`·`computedStyle`을 확인한다).
+- `src/shared/hash.ts`: 키·다이어그램 캐시가 쓰는 FNV-1a를 한 곳으로 합치고 고정 값 테스트로 지킨다(`projectId`가 바뀌면 store 데이터가 사라진 것처럼 보인다). 쓰이지 않던 `PLUGIN` 상수를 지웠다.
+- `tools/release.mjs`: 릴리스 커밋에 하드코딩하던 `Co-Authored-By` 줄을 없애고 환경변수 `RELEASE_TRAILER`로 줄 수 있게 했다. `--push`는 `main`이 아니면 파일을 고치기 전에 멈춘다.
+- `tools/ci-local.mjs`: CI처럼 store-backup 시험을 PowerShell 7(`pwsh`)로도 돌린다(`pwsh`가 없으면 건너뛰고 요약에 남긴다).
+
 ## [0.4.10] - 2026-10-16
 
 ### Changed

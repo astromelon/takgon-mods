@@ -138,37 +138,38 @@ const refreshAgents = async ($: EngineInterface): Promise<void> => {
   }
 }
 
-const savePins = async ($: EngineInterface, next: Pin[]): Promise<void> => {
-  await update($, pinsAtom, () => next)
+/** 핀 목록을 atom 안에서 계산해(읽기→쓰기 사이에 다른 변경이 끼지 않게) 그 결과를 store에도 쓴다. */
+const changePins = async ($: EngineInterface, change: (pins: Pin[]) => Pin[]): Promise<void> => {
+  const next = await update($, pinsAtom, pins => change(pins))
   await $.store.set(pinsKey(await pidOf($)), next)
 }
 
 /** 핀 추가. id는 시각 + 같은 시각 핀 개수로 만든다(난수 없이 고유). */
 const pinText = async ($: EngineInterface, text: string): Promise<void> => {
-  const pins = await read($, pinsAtom)
   const now = await $.clock.now()
   const base = `pin-${now.toString(36)}`
-  const id = `${base}-${pins.filter(pin => pin.id.startsWith(base)).length}`
-  await savePins($, addPin(pins, { id, text, createdAt: now }))
+  await changePins($, pins => {
+    const id = `${base}-${pins.filter(pin => pin.id.startsWith(base)).length}`
+    return addPin(pins, { id, text, createdAt: now })
+  })
 }
 
 const unpin = async ($: EngineInterface, id: string): Promise<void> => {
-  await savePins($, removePin(await read($, pinsAtom), id))
+  await changePins($, pins => removePin(pins, id))
 }
 
 /** 체크 토글 → atom과 M4 store 키에 같이 쓴다. */
 const toggle = async ($: EngineInterface, id: string): Promise<void> => {
-  const next = toggleTask(await read($, tasksAtom), id)
-  await update($, tasksAtom, () => next)
+  const next = await update($, tasksAtom, tasks => toggleTask(tasks, id))
   await $.store.set(tasksKey(await pidOf($)), next)
 }
 
-/** 사용량 상태를 갱신하고 80% 이상 항목을 원인별 세션당 1회 toast한다. */
+/** 사용량 상태를 갱신하고 임계치 이상 항목을 원인별 세션당 1회 toast한다. */
 const measure = async ($: EngineInterface, reading: UsageReading): Promise<void> => {
   const snapshot = toSnapshot(reading, await $.clock.now())
   await update($, usageAtom, () => snapshot)
   const lang = await langOf($)
-  const threshold = toPercent(await $.store.get(THRESHOLD_KEY), USAGE_THRESHOLD)
+  const threshold = await read($, usageThresholdAtom)
   for (const alert of usageAlerts(snapshot, threshold)) {
     const marked = markNotified(await read($, notifiedAtom), alert.cause)
     if (marked === null) {
@@ -230,7 +231,6 @@ export const registerPanel = (on: On): void => {
     await ensureRestored($)
     return next(e)
   }).catch(($, e, next) => next(e))
-
 
   on('command.run', { command: 'panel' }, async ($, e) => {
     await ensureRestored($)
@@ -356,7 +356,7 @@ export const registerPanel = (on: On): void => {
         ) : (
           <Box flexDirection="column">
             {shown.map(pin => (
-              <Box flexDirection="row">
+              <Box key={`pin-${pin.id}`} flexDirection="row">
                 <Button key={`unpin-${pin.id}`} onPress={() => unpin($, pin.id)}>
                   {tr(lang, 'pin.remove')}
                 </Button>
@@ -391,7 +391,7 @@ export const registerPanel = (on: On): void => {
         ) : (
           <Box flexDirection="column">
             {shown.map(run => (
-              <Text dimColor={run.status !== 'running'}>{fit(agentLine(lang, run), columns)}</Text>
+              <Text key={`agent-${run.agentId}`} dimColor={run.status !== 'running'}>{fit(agentLine(lang, run), columns)}</Text>
             ))}
             {more(hidden)}
           </Box>
@@ -400,8 +400,8 @@ export const registerPanel = (on: On): void => {
       const { shown, hidden } = visible(usageLines(lang, await read($, usageAtom), await read($, usageThresholdAtom)), rows)
       body = (
         <Box flexDirection="column">
-          {shown.map(line => (
-            <Text>{fit(line, columns)}</Text>
+          {shown.map((line, i) => (
+            <Text key={`usage-${i}`}>{fit(line, columns)}</Text>
           ))}
           {more(hidden)}
         </Box>
@@ -416,8 +416,8 @@ export const registerPanel = (on: On): void => {
         ) : (
           <Box flexDirection="column">
             <Text dimColor>{fit(tr(lang, 'handoff.path', { path: handoff.path }), columns)}</Text>
-            {shown.map(line => (
-              <Text>{fit(line, columns)}</Text>
+            {shown.map((line, i) => (
+              <Text key={`handoff-${i}`}>{fit(line, columns)}</Text>
             ))}
             {more(hidden)}
           </Box>

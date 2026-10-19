@@ -4,6 +4,8 @@
  * `$`를 받지 않는다(엔진은 `$`를 import 경계 너머로 넘기는 것을 거부한다). store·state·ui 호출은 index.tsx에 둔다.
  */
 import type { Lang, PrStatus, TaskItem } from '../../types'
+import { toTasks, toggleTask } from '../shared/tasks'
+import { fit } from '../shared/text'
 import { tr } from './messages'
 import type { ComposerKey } from './messages'
 
@@ -36,40 +38,6 @@ export const formatPrBadge = (lang: Lang, pr: PrStatus): string => {
     parts.push(tr(lang, `pr.checks.${pr.checks}` as ComposerKey))
   }
   return parts.join(' · ')
-}
-
-/** 터미널 칸 기준 글자 폭(한글·CJK·전각은 2칸). */
-const cellWidth = (char: string): number => {
-  const code = char.codePointAt(0) ?? 0
-  const isWide =
-    (code >= 0x1100 && code <= 0x115f) ||
-    (code >= 0x2e80 && code <= 0xa4cf) ||
-    (code >= 0xac00 && code <= 0xd7a3) ||
-    (code >= 0xf900 && code <= 0xfaff) ||
-    (code >= 0xfe30 && code <= 0xfe4f) ||
-    (code >= 0xff00 && code <= 0xff60) ||
-    (code >= 0xffe0 && code <= 0xffe6)
-  return isWide ? 2 : 1
-}
-
-/** `width` 칸에 맞게 자르고 끝에 `…`를 붙인다. */
-export const fit = (text: string, width: number): string => {
-  const chars = [...text]
-  const total = chars.reduce((sum, char) => sum + cellWidth(char), 0)
-  if (total <= width) {
-    return text
-  }
-  let used = 0
-  let out = ''
-  for (const char of chars) {
-    const next = used + cellWidth(char)
-    if (next > width - 1) {
-      break
-    }
-    used = next
-    out += char
-  }
-  return `${out}…`
 }
 
 /** 모델 응답에서 첫 `open`…마지막 `close` 구간을 JSON으로 읽는다. 실패하면 undefined. */
@@ -140,29 +108,6 @@ export const mergeTasks = (
   })
   return [...added, ...existing].sort(byPriority).slice(0, MAX_TASKS)
 }
-
-/** store 값을 TaskItem 목록으로 검증한다. 형식이 틀린 항목은 버린다. */
-export const toTasks = (value: unknown): TaskItem[] => {
-  if (!Array.isArray(value)) {
-    return []
-  }
-  return value.filter((item): item is TaskItem => {
-    const one = item as Partial<TaskItem> | null
-    return (
-      one !== null &&
-      typeof one === 'object' &&
-      typeof one.id === 'string' &&
-      typeof one.text === 'string' &&
-      KINDS.includes(one.kind as TaskItem['kind']) &&
-      typeof one.isDone === 'boolean' &&
-      typeof one.createdAt === 'number'
-    )
-  })
-}
-
-/** `id`의 완료 상태를 뒤집는다. */
-export const toggleTask = (tasks: readonly TaskItem[], id: string): TaskItem[] =>
-  tasks.map(one => (one.id === id ? { ...one, isDone: !one.isDone } : one))
 
 /** band에 그릴 미완료 task(최근 순 최대 3개). */
 export const openTasks = (tasks: readonly TaskItem[]): TaskItem[] =>
@@ -265,3 +210,6 @@ export const buildForkPrompt = (lang: Lang, existing: readonly TaskItem[]): stri
   const head = tr(lang, 'fork.prompt')
   return open.length === 0 ? head : `${head}\n\n${tr(lang, 'fork.existing', { items: open.join('\n') })}`
 }
+
+// 같은 이름으로 쓰던 공용 함수를 이 모듈의 공개 API로 다시 내보낸다.
+export { fit, toTasks, toggleTask }

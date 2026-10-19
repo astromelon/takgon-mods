@@ -70,6 +70,9 @@ const COACH_KEY = globalKey('m4', 'coach')
 const COACH_MODEL = 'haiku'
 const COACH_TIMEOUT_MS = 4000
 
+/** 이 시간이 지나도 끝나지 않은 fork는 멈춘 것으로 보고 새로 시작한다. */
+const FORK_STUCK_MS = 5 * 60_000
+
 /** task 줄에서 버튼 표식·여백이 차지하는 칸. */
 const ROW_CHROME = 8
 
@@ -108,8 +111,7 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 
 /** task 목록을 state와 store에 함께 쓴다. */
 const saveTasks = async ($: EngineInterface, fn: (tasks: TaskItem[]) => TaskItem[]): Promise<void> => {
-  const next = fn(await read($, tasksAtom))
-  await update($, tasksAtom, () => next)
+  const next = await update($, tasksAtom, fn)
   await $.store.set(await tasksKey($), next)
 }
 
@@ -210,7 +212,8 @@ const coachPrompt = async (
  */
 export const registerComposer = (on: On): void => {
   let lastForkAt: number | undefined
-  let isForking = false
+  // fork는 시간 상한이 없어 멈출 수 있다. 시작 시각을 남겨 FORK_STUCK_MS가 지나면 끝난 것으로 본다.
+  let forkStartedAt: number | undefined
 
   on('session.start', { isInteractive: true }, async ($, e, next) => {
     await ensureRestored($)
@@ -226,16 +229,22 @@ export const registerComposer = (on: On): void => {
   on('turn.complete', { reason: 'answer' }, async ($, e, next) => {
     await ensureRestored($)
     const result = await next(e)
+    const now = await $.clock.now()
+    const isForking = forkStartedAt !== undefined && now - forkStartedAt < FORK_STUCK_MS
     if (e.agentId === undefined && !isForking && (await isOn($))) {
       // fork는 시간 상한을 줄 수 없어 턴 마무리를 붙잡지 않도록 타이머로 떼어 낸다. 한 번에 하나만 돈다.
-      isForking = true
+      const startedAt = now
+      forkStartedAt = startedAt
       $.clock.after(0, async () => {
         try {
           lastForkAt = await suggestNextSteps($, lastForkAt)
         } catch {
           // Next-steps는 부가 기능이므로 실패해도 조용히 넘어간다.
         } finally {
-          isForking = false
+          // 멈췄다 풀려난 오래된 fork가 새 fork의 표시를 지우지 않게 자기 표시일 때만 해제한다.
+          if (forkStartedAt === startedAt) {
+            forkStartedAt = undefined
+          }
         }
       })
     }

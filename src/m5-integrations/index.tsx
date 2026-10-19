@@ -92,6 +92,9 @@ const TURN_GAP_MS = 10_000
 let poller: Timer | null = null
 let lastRefreshAt: number | null = null
 
+/** `getStatus`가 도는 중인지. 폴링·turn.complete·복원이 겹쳐도 git·gh·glab을 동시에 띄우지 않고, 늦게 끝난 옛 결과가 새 결과를 덮지 않게 한다. */
+let isRefreshing = false
+
 /** 원인 키 → toast 문구. */
 const TOAST_OF: Readonly<Record<string, M5Key>> = {
   'gh-missing': 'toast.ghMissing',
@@ -115,10 +118,10 @@ const linkedKey = async ($: EngineInterface): Promise<string> =>
 /** 원인별 toast 1회. 같은 원인은 세션 동안 다시 알리지 않는다. */
 const notifyOnce = async ($: EngineInterface, cause: string): Promise<void> => {
   const next = markNotified(await read($, notifiedAtom), cause)
-  const key = TOAST_OF[cause]
-  if (next === null || key === undefined) {
+  if (next === null || !Object.hasOwn(TOAST_OF, cause)) {
     return
   }
+  const key = TOAST_OF[cause]!
   await update($, notifiedAtom, () => next)
   $.ui.toast(tr(await read($, langAtom), key))
 }
@@ -181,18 +184,28 @@ const gitlabStatus = async (
  */
 const getStatus = async ($: EngineInterface): Promise<void> => {
   if (!(await read($, modulesAtom)).integrations) {
-    return
-  }
-  lastRefreshAt = await $.clock.now()
-  const forge = await forgeOf($)
-  if (forge === null) {
+    // 꺼진 뒤에도 마지막 PR 배지가 M4 band에 남지 않게 비운다.
     await update($, prAtom, () => null)
     return
   }
-  const { pr, failure } = forge === 'github' ? await githubStatus($) : await gitlabStatus($)
-  await update($, prAtom, () => pr)
-  if (failure !== null && failure !== 'no-pr') {
-    await notifyOnce($, failure)
+  if (isRefreshing) {
+    return
+  }
+  isRefreshing = true
+  try {
+    lastRefreshAt = await $.clock.now()
+    const forge = await forgeOf($)
+    if (forge === null) {
+      await update($, prAtom, () => null)
+      return
+    }
+    const { pr, failure } = forge === 'github' ? await githubStatus($) : await gitlabStatus($)
+    await update($, prAtom, () => pr)
+    if (failure !== null && failure !== 'no-pr') {
+      await notifyOnce($, failure)
+    }
+  } finally {
+    isRefreshing = false
   }
 }
 
@@ -410,10 +423,10 @@ const init = async ($: EngineInterface): Promise<void> => {
   const { lang } = await settingsOf($)
   // 등록이 거부돼도(이름 충돌 등) PR 폴링과 상태 복원은 계속한다.
   await registerCommand($, {
-      name: 'issue',
-      description: tr(lang, 'issue.description'),
-      argumentHint: tr(lang, 'issue.argumentHint'),
-    })
+    name: 'issue',
+    description: tr(lang, 'issue.description'),
+    argumentHint: tr(lang, 'issue.argumentHint'),
+  })
   await update($, restoredAtom, list => (list.includes('m5') ? list : [...list, 'm5']))
   await restore($)
   await update($, prAtom, () => null)

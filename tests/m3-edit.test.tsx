@@ -83,6 +83,30 @@ describe('범위 판정(순수)', () => {
     expect(parseHeadlessOutput('log\n{"ok":true,"status":200,"consoleErrors":[]}\n')?.ok).toBe(true)
     expect(parseHeadlessOutput('no json')).toBeUndefined()
   })
+
+  test('element가 있으면 selector와 computedStyle 모양을 확인한다', () => {
+    const base = { ok: true, status: 200, consoleErrors: [] }
+    const good = { ...base, element: { selector: '.a', computedStyle: { color: 'red' } } }
+    expect(parseHeadlessOutput(JSON.stringify(good))?.element?.selector).toBe('.a')
+    const badStyle = { ...base, element: { selector: '.a', computedStyle: 'red' } }
+    expect(parseHeadlessOutput(JSON.stringify(badStyle))).toBeUndefined()
+    const badSelector = { ...base, element: { computedStyle: {} } }
+    expect(parseHeadlessOutput(JSON.stringify(badSelector))).toBeUndefined()
+    expect(parseHeadlessOutput('{"ok":true}')).toBeUndefined()
+  })
+
+  test('judgeEdit: 여러 매치의 줄 번호와 CRLF·경계를 정확히 센다', () => {
+    const text = ['a', 'x', 'b', 'x', 'c', 'x'].join('\r\n')
+    expect(judgeEdit(text, 'x', 2, 6)).toEqual({ isAllowed: true, matches: 3 })
+    expect(judgeEdit(text, 'x', 2, 4)).toEqual({ isAllowed: false, reason: 'outside', lines: [6, 6] })
+    expect(judgeEdit(text, 'x', 3, 6)).toEqual({ isAllowed: false, reason: 'outside', lines: [2, 2] })
+    expect(judgeEdit('a\nx\nx\nb', 'x\nx', 1, 2)).toEqual({ isAllowed: false, reason: 'outside', lines: [2, 3] })
+    expect(judgeEdit('p\nq\n', 'q\n', 2, 3)).toEqual({ isAllowed: true, matches: 1 })
+    expect(judgeEdit('x', 'x', 1, 1)).toEqual({ isAllowed: true, matches: 1 })
+    const many = Array.from({ length: 2000 }, (_, i) => `line${i}`).join('\n')
+    expect(judgeEdit(many, 'line1999', 2000, 2000)).toEqual({ isAllowed: true, matches: 1 })
+    expect(judgeEdit(many, 'line1999', 1, 1999)).toEqual({ isAllowed: false, reason: 'outside', lines: [2000, 2000] })
+  })
 })
 
 const START = { cwd: 'C:/proj', surface: 'terminal', isInteractive: true } as const

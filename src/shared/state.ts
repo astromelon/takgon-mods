@@ -6,9 +6,6 @@
  */
 import type { ModuleFlags, ModuleId } from '../../types'
 
-/** 플러그인 이름. `$.state` 참조의 `plugin`과 같다. */
-export const PLUGIN = 'takgon-mods'
-
 /** 모듈 식별자 전체, `/mods` 목록 순서. */
 export const MODULE_IDS: readonly ModuleId[] = [
   'i18n',

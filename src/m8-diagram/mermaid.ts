@@ -4,6 +4,7 @@
  * `$`를 쓰지 않으므로 index.tsx(turn.complete 사전 렌더, ui.render 표시)가 import해서 쓴다.
  */
 import type { DiagramRender } from '../../types'
+import { fnv1a } from '../shared/hash'
 
 /** 응답 본문 조각: 엔진이 그릴 markdown, 또는 다이어그램으로 바꿀 mermaid 블록. */
 export type Segment =
@@ -33,16 +34,6 @@ export const MAX_DIAGRAMS = 50
 
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/
 const MERMAID_INFO = /^[ \t]*mermaid(?:[ \t].*)?$/i
-
-/** FNV-1a 32bit 해시를 8자리 hex로 낸다(코드 내용용 — 경로 정규화를 하지 않는다). */
-const fnv1a = (text: string): string => {
-  let hash = 0x811c9dc5
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i)
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0')
-}
 
 /** 해시용 정규화: 줄바꿈을 `\n`으로, 끝 공백 제거. 같은 다이어그램이 같은 파일을 쓰게 한다. */
 const normalizeCode = (code: string): string => code.replace(/\r\n?/g, '\n').replace(/\s+$/, '')
@@ -135,3 +126,9 @@ export const failureReason = (stderr: string, exitCode: number): string => {
 /** `cmd /c mmdc` 결과가 "명령을 찾을 수 없음"인지. */
 export const isCommandMissing = (exitCode: number, stderr: string): boolean =>
   exitCode !== 0 && /not recognized|인식되지 않|not found|찾을 수 없/i.test(stderr)
+
+/** `cmd /c`가 다시 해석하는 메타문자. */
+const CMD_META = /[&|^%<>"]/
+
+/** `cmd /c mmdc` 재시도에 넘겨도 되는 인자인지(메타문자가 하나도 없을 때만). */
+export const canRetryViaCmd = (args: readonly string[]): boolean => !args.some(arg => CMD_META.test(arg))

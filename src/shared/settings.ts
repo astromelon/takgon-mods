@@ -22,8 +22,6 @@ export type ModsAction =
   | { kind: 'lang'; lang: Lang }
   | { kind: 'usage' }
 
-const SWITCHES: Readonly<Record<string, boolean>> = { on: true, off: false }
-
 /** `/mods` 인자를 해석한다. 알 수 없는 입력은 `usage`. */
 export const parseModsArgs = (args: string): ModsAction => {
   const [head, value, ...rest] = args.trim().toLowerCase().split(/\s+/).filter(Boolean)
@@ -36,11 +34,10 @@ export const parseModsArgs = (args: string): ModsAction => {
   if (head === 'lang') {
     return LANGS.includes(value as Lang) ? { kind: 'lang', lang: value as Lang } : { kind: 'usage' }
   }
-  const isOn = SWITCHES[value]
-  if (!MODULE_IDS.includes(head as ModuleId) || isOn === undefined) {
+  if (!MODULE_IDS.includes(head as ModuleId) || (value !== 'on' && value !== 'off')) {
     return { kind: 'usage' }
   }
-  return { kind: 'toggle', module: head as ModuleId, isOn }
+  return { kind: 'toggle', module: head as ModuleId, isOn: value === 'on' }
 }
 
 /** 저장된 값을 모듈 플래그로 맞춘다. 없거나 모르는 값은 기본(on)으로 채운다. */

@@ -5,6 +5,8 @@
  */
 import type { AgentRun, PanelTab, Pin, TaskItem, UsageSnapshot } from '../../types'
 import { parsePercent } from '../shared/settings'
+import { toTasks, toggleTask } from '../shared/tasks'
+import { fit } from '../shared/text'
 
 /** pane id. `ui.render`의 `requestId`와 같다. */
 export const PANE_ID = 'takgon-panel'
@@ -14,6 +16,9 @@ export const TABS: readonly PanelTab[] = ['pinboard', 'tasks', 'agents', 'usage'
 
 /** 프로젝트당 핀 상한. */
 export const MAX_PINS = 100
+
+/** 핀 텍스트 최대 길이(문자). 4 MiB 공유 store를 긴 응답 핀이 채우지 않게 한다. */
+export const MAX_PIN_TEXT = 2000
 
 /** 세션당 에이전트 기록 상한. */
 export const MAX_AGENTS = 50
@@ -80,15 +85,12 @@ export const lastAssistantText = (
   return undefined
 }
 
-/** 핀을 추가하고 최근 `MAX_PINS`개만 남긴다(오래된 것부터 버림). */
-export const addPin = (pins: readonly Pin[], pin: Pin): Pin[] => [...pins, pin].slice(-MAX_PINS)
+/** 핀을 추가하고 최근 `MAX_PINS`개만 남긴다(오래된 것부터 버림). 텍스트는 `MAX_PIN_TEXT`자로 자른다. */
+export const addPin = (pins: readonly Pin[], pin: Pin): Pin[] =>
+  [...pins, { ...pin, text: pin.text.slice(0, MAX_PIN_TEXT) }].slice(-MAX_PINS)
 
 /** 핀 하나를 지운다. */
 export const removePin = (pins: readonly Pin[], id: string): Pin[] => pins.filter(pin => pin.id !== id)
-
-/** 할 일 하나의 완료 여부를 뒤집는다. */
-export const toggleTask = (tasks: readonly TaskItem[], id: string): TaskItem[] =>
-  tasks.map(task => (task.id === id ? { ...task, isDone: !task.isDone } : task))
 
 /** 서브에이전트 시작을 기록한다. 같은 id가 이미 있으면 새로 시작한 것으로 바꾼다. */
 export const startAgent = (
@@ -156,29 +158,10 @@ export const toPins = (value: unknown): Pin[] =>
         .filter(one => typeof one.id === 'string' && typeof one.text === 'string')
         .map(one => ({
           id: String(one.id),
-          text: String(one.text),
+          text: String(one.text).slice(0, MAX_PIN_TEXT),
           createdAt: typeof one.createdAt === 'number' ? one.createdAt : 0,
         }))
         .slice(-MAX_PINS)
-    : []
-
-const TASK_KINDS: readonly TaskItem['kind'][] = ['checkbox', 'issue', 'pr']
-
-/** store의 할 일 목록을 검증한다. 모양이 틀린 항목은 버린다. */
-export const toTasks = (value: unknown): TaskItem[] =>
-  Array.isArray(value)
-    ? value
-        .filter(isRecord)
-        .filter(one => typeof one.id === 'string' && typeof one.text === 'string')
-        .map(one => ({
-          id: String(one.id),
-          text: String(one.text),
-          kind: TASK_KINDS.includes(one.kind as TaskItem['kind'])
-            ? (one.kind as TaskItem['kind'])
-            : 'checkbox',
-          isDone: one.isDone === true,
-          createdAt: typeof one.createdAt === 'number' ? one.createdAt : 0,
-        }))
     : []
 
 /** `session.measure`/`session.usage`가 주는 수치. */
@@ -205,7 +188,7 @@ export type UsageAlert =
   | { cause: string; kind: 'context'; percent: number }
   | { cause: string; kind: 'rate'; limit: string; percent: number }
 
-/** 임계치(80%) 이상인 항목을 경고로 낸다. 이미 알린 원인은 호출 쪽에서 거른다. */
+/** 임계치 이상인 항목을 경고로 낸다. 이미 알린 원인은 호출 쪽에서 거른다. */
 export const usageAlerts = (snapshot: UsageSnapshot, threshold: number = USAGE_THRESHOLD): UsageAlert[] => {
   const alerts: UsageAlert[] = []
   const percent = snapshot.contextPercent
@@ -233,52 +216,6 @@ export const formatTokens = (count: number): string => {
 
 const trimZero = (text: string): string => text.replace(/\.0$/, '')
 
-/** 한 줄로 만들고 `columns` 칸에 맞춰 자른다(넘치면 끝에 `…`). 폭이 2칸인 문자를 고려한다. */
-export const fit = (text: string, columns: number): string => {
-  const line = text.replace(/\s+/g, ' ').trim()
-  const room = Math.max(1, columns)
-  let width = 0
-  let out = ''
-  for (const ch of line) {
-    const cell = isWide(ch) ? 2 : 1
-    if (width + cell > room) {
-      return `${sliceToWidth(out, room - 1)}…`
-    }
-    width += cell
-    out += ch
-  }
-  return out
-}
-
-const sliceToWidth = (text: string, room: number): string => {
-  let width = 0
-  let out = ''
-  for (const ch of text) {
-    const cell = isWide(ch) ? 2 : 1
-    if (width + cell > room) {
-      break
-    }
-    width += cell
-    out += ch
-  }
-  return out
-}
-
-/** 한글·CJK·전각 문자 판정(대략). */
-const isWide = (ch: string): boolean => {
-  const code = ch.codePointAt(0) ?? 0
-  return (
-    (code >= 0x1100 && code <= 0x115f) ||
-    (code >= 0x2e80 && code <= 0xa4cf) ||
-    (code >= 0xac00 && code <= 0xd7a3) ||
-    (code >= 0xf900 && code <= 0xfaff) ||
-    (code >= 0xfe30 && code <= 0xfe4f) ||
-    (code >= 0xff00 && code <= 0xff60) ||
-    (code >= 0xffe0 && code <= 0xffe6) ||
-    code >= 0x1f300
-  )
-}
-
 /** 목록을 보일 수 있는 줄 수만큼 자른다. 넘치면 마지막 줄을 "외 N개"에 쓰도록 `hidden`을 돌려준다. */
 export const visible = <T>(items: readonly T[], rows: number): { shown: T[]; hidden: number } => {
   const room = Math.max(1, rows)
@@ -288,3 +225,6 @@ export const visible = <T>(items: readonly T[], rows: number): { shown: T[]; hid
   const shown = items.slice(0, Math.max(1, room - 1))
   return { shown, hidden: items.length - shown.length }
 }
+
+// 같은 이름으로 쓰던 공용 함수를 이 모듈의 공개 API로 다시 내보낸다.
+export { fit, toTasks, toggleTask }

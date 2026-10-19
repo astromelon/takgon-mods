@@ -4,6 +4,11 @@
  * `$`를 받지 않으므로 단위 테스트로 직접 검증한다.
  */
 import type { BrowserInfo } from '../../types'
+import { HEADLESS_TIMEOUT_MS as DEFAULT_HEADLESS_TIMEOUT_MS } from '../shared/headless'
+import type { HeadlessResult } from '../shared/headless'
+
+export { parseHeadlessOutput } from '../shared/headless'
+export type { HeadlessResult } from '../shared/headless'
 
 /** pane id이자 `ui.render`의 requestId. */
 export const PANE_ID = 'takgon-browser'
@@ -11,22 +16,11 @@ export const PANE_ID = 'takgon-browser'
 /** 화면·첨부에 남기는 콘솔 에러 최대 건수. */
 export const MAX_ERRORS = 20
 
-/** headless 스크립트 실행 제한 시간. 스크립트의 기본 대기(3초)와 브라우저 기동을 넉넉히 덮는다. */
-export const HEADLESS_TIMEOUT_MS = 45_000
+/** headless 스크립트 실행 제한 시간. 공용 기본값(45초)이 스크립트의 기본 대기(3초)와 브라우저 기동을 넉넉히 덮는다. */
+export const HEADLESS_TIMEOUT_MS = DEFAULT_HEADLESS_TIMEOUT_MS
 
 /** headless 실패 원인. toast 1회 판정 키(`m2/<원인>`)로도 쓴다. */
 export type HeadlessCause = 'node-missing' | 'playwright-missing' | 'headless-failed'
-
-/** `tools/headless.mjs`가 stdout 마지막 줄에 내는 JSON. M3도 같은 계약을 쓴다. */
-export type HeadlessResult = {
-  ok: boolean
-  status: number
-  title?: string
-  consoleErrors: string[]
-  screenshot?: string
-  element?: { selector: string; computedStyle: Record<string, string>; screenshot?: string }
-  error?: string
-}
 
 /** 외부 브라우저를 여는 방법을 가르는 플랫폼. */
 export type Platform = 'windows' | 'mac' | 'linux'
@@ -58,26 +52,6 @@ export const bashOutputText = (ran: unknown): string => {
   return parts.join('\n')
 }
 
-/** stdout의 마지막 비어 있지 않은 줄을 계약 JSON으로 읽는다. 형태가 다르면 `undefined`. */
-export const parseHeadlessOutput = (stdout: string): HeadlessResult | undefined => {
-  const last = stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean).at(-1)
-  if (last === undefined) {
-    return undefined
-  }
-  try {
-    const value = JSON.parse(last) as Partial<HeadlessResult> | null
-    const isValid =
-      value !== null &&
-      typeof value === 'object' &&
-      typeof value.ok === 'boolean' &&
-      typeof value.status === 'number' &&
-      Array.isArray(value.consoleErrors)
-    return isValid ? (value as HeadlessResult) : undefined
-  } catch {
-    return undefined
-  }
-}
-
 /** 실행 결과로 실패 원인을 정한다. 정상이면 `undefined`. exit 2는 계약상 playwright 없음이다. */
 export const headlessCause = (
   exitCode: number,
@@ -88,6 +62,14 @@ export const headlessCause = (
   }
   return result === undefined ? 'headless-failed' : undefined
 }
+
+/**
+ * `$.process.run`이 거부됐을 때의 원인. 엔진은 시작 실패와 시간 초과를 같은 거부로 알리고 오류 문구도 정해 두지
+ * 않았으므로, 문구 대신 걸린 시간으로 가른다. 제한 시간에 거의 다 찼으면 시간 초과(headless 실패), 그보다 빨리
+ * 거부됐으면 시작 실패(node 없음)다.
+ */
+export const spawnFailureCause = (elapsedMs: number, timeoutMs: number): HeadlessCause =>
+  elapsedMs >= timeoutMs * 0.9 ? 'headless-failed' : 'node-missing'
 
 /** headless 스크립트 argv. */
 export const headlessArgv = (script: string, url: string, out: string): string[] => [
@@ -107,10 +89,23 @@ export const platformOf = (path: string): Platform => {
   return path.startsWith('/Users/') ? 'mac' : 'linux'
 }
 
-/** 외부 브라우저로 여는 argv. shell 없이 실행된다. */
+/** 외부 브라우저로 열어도 되는 URL인지: 파싱되고 http(s)인 것만. */
+export const isSafeExternalUrl = (value: string): boolean => {
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 외부 브라우저로 여는 argv. shell 없이 실행된다. Windows에서 `cmd /c start`를 쓰면 cmd가 명령줄을
+ * 다시 해석해 URL의 `&`·`|`·`^`가 명령으로 실행되므로, cmd를 거치지 않는 rundll32를 쓴다.
+ */
 export const openExternalArgv = (platform: Platform, url: string): string[] => {
   if (platform === 'windows') {
-    return ['cmd', '/c', 'start', '', url]
+    return ['rundll32', 'url.dll,FileProtocolHandler', url]
   }
   return platform === 'mac' ? ['open', url] : ['xdg-open', url]
 }

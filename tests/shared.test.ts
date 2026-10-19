@@ -1,9 +1,12 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
+import { fnv1a } from '../src/shared/hash'
 import { t } from '../src/shared/i18n'
 import { globalKey, projectId, projectKey } from '../src/shared/keys'
 import { parseModsArgs, parsePercent, refusalReason, toPercent } from '../src/shared/settings'
+import { toTasks, toggleTask } from '../src/shared/tasks'
+import { fit, isWide } from '../src/shared/text'
 
 const mods = ($: Engine, args: string) =>
   $.command.run({
@@ -85,6 +88,14 @@ describe('parseModsArgs', () => {
     expect(parseModsArgs('lang jp')).toEqual({ kind: 'usage' })
     expect(parseModsArgs('panel maybe')).toEqual({ kind: 'usage' })
   })
+
+  test('Object.prototype 속성 이름은 on/off로 보지 않는다', () => {
+    expect(parseModsArgs('panel constructor')).toEqual({ kind: 'usage' })
+    expect(parseModsArgs('panel __proto__')).toEqual({ kind: 'usage' })
+    expect(parseModsArgs('panel tostring')).toEqual({ kind: 'usage' })
+    expect(parseModsArgs('constructor on')).toEqual({ kind: 'usage' })
+    expect(parseModsArgs('__proto__ off')).toEqual({ kind: 'usage' })
+  })
 })
 
 describe('/mods 명령', () => {
@@ -148,5 +159,49 @@ describe('빈 store 첫 사용', () => {
 
     expect(sets.find(one => one.key === 'g/core/modules')?.value).toMatchObject({ panel: false })
     expect(sets.find(one => one.key === 'g/i18n/lang')?.value).toBe('en')
+  })
+})
+
+describe('text', () => {
+  test('fit: 한글·이모지는 2칸으로 세고 넘치면 …로 자른다', () => {
+    expect(isWide('a')).toBe(false)
+    expect(isWide('가')).toBe(true)
+    expect(isWide('😀')).toBe(true)
+    expect(fit('abcdef', 4)).toBe('abc…')
+    expect(fit('가나다라', 5)).toBe('가나…')
+    expect(fit('가나다라마', 6)).toBe('가나…')
+    expect(fit('가나다', 6)).toBe('가나다')
+    expect(fit('😀😀😀', 5)).toBe('😀😀…')
+    expect(fit('a  b\n c', 10)).toBe('a b c')
+    expect(fit('abc', 0)).toBe('…')
+  })
+})
+
+describe('tasks', () => {
+  test('toTasks: id·text가 문자열이면 유지하고 나머지는 기본값으로 채운다(M4·M6 공통)', () => {
+    const loose = toTasks([
+      { id: 'a', text: 'x', kind: 'weird', isDone: 'yes', createdAt: 'now' },
+      { id: 'b', text: 'y', kind: 'pr', isDone: true, createdAt: 5 },
+      { id: 1, text: 'z' },
+      null,
+    ])
+    expect(loose).toEqual([
+      { id: 'a', text: 'x', kind: 'checkbox', isDone: false, createdAt: 0 },
+      { id: 'b', text: 'y', kind: 'pr', isDone: true, createdAt: 5 },
+    ])
+    expect(toTasks('nope')).toEqual([])
+    expect(toggleTask(loose, 'a')[0]?.isDone).toBe(true)
+    expect(loose[0]?.isDone).toBe(false)
+  })
+})
+
+describe('hash', () => {
+  // projectId·다이어그램 캐시 이름이 이 값에 달려 있다. 바뀌면 store의 프로젝트 데이터가 새 키로 갈라져 사라진 것처럼 보인다.
+  test('fnv1a는 기존 키와 같은 고정 값을 낸다', () => {
+    expect(fnv1a('')).toBe('811c9dc5')
+    expect(fnv1a('a')).toBe('e40c292c')
+    expect(fnv1a('한글')).toBe('b75d6ac1')
+    expect(projectId('C:\\proj')).toBe('b1a59c26')
+    expect(projectId('c:/dev/takgon-mods/')).toBe('42eec6b5')
   })
 })

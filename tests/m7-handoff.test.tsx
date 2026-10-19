@@ -83,6 +83,8 @@ type World = {
   forks: string[]
   percent: { value: number | undefined }
   isForkOk: { value: boolean }
+  /** 값이 있으면 `model.fork`가 이 약속이 풀릴 때까지 기다린다(생성이 겹치는 상황을 만든다). */
+  forkGate: { wait?: Promise<void>; started?: () => void }
   context: (readonly string[] | undefined)[]
 }
 
@@ -121,6 +123,7 @@ const engine = (
     forks: [],
     percent: { value: 50 },
     isForkOk: { value: true },
+    forkGate: {},
     context: [],
   }
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -129,8 +132,10 @@ const engine = (
   on('session.usage', () => ({
     value: { startedAt: 0, context: { window: 200_000, percent: world.percent.value }, rateLimits: [] },
   }))
-  on('model.fork', ($, e) => {
+  on('model.fork', async ($, e) => {
     world.forks.push(e.prompt)
+    world.forkGate.started?.()
+    await world.forkGate.wait
     return world.isForkOk.value
       ? { value: { isAnswered: true, text: '## 목표\n인수인계 본문', usage: ZERO } }
       : { value: { isAnswered: false, reason: 'nothing-to-fork' } }
@@ -157,6 +162,54 @@ const engine = (
   }
   return world
 }
+
+describe('생성 겹침', () => {
+  const handoffFiles = (world: World): string[] =>
+    [...world.files.keys()].filter(path => path.startsWith(`${DIR}/handoff/`))
+
+  test('자동 생성 중에 /tk-handoff를 부르면 두 번째 문서를 만들지 않고 안내한다', async ($, on) => {
+    const world = engine(on)
+    const started = new Promise<void>(resolve => { world.forkGate.started = resolve })
+    let release!: () => void
+    world.forkGate.wait = new Promise<void>(resolve => { release = resolve })
+    const clock = mock.clock(on, { now: new Date(2026, 9, 12, 9, 5).getTime() })
+    await $.session.start(START)
+
+    world.percent.value = 80
+    await $.turn.complete(TURN)
+    const settling = clock.settle()
+    await started
+
+    const out = await $.command.run({ command: 'tk-handoff', args: '', ...RUN })
+    expect(out.text).toContain('만드는 중')
+    expect(world.forks).toHaveLength(1)
+
+    release()
+    await settling
+    expect(handoffFiles(world)).toHaveLength(1)
+  })
+
+  test('/tk-handoff가 만드는 중이면 자동 생성은 겹쳐 돌지 않는다', async ($, on) => {
+    const world = engine(on)
+    const started = new Promise<void>(resolve => { world.forkGate.started = resolve })
+    let release!: () => void
+    world.forkGate.wait = new Promise<void>(resolve => { release = resolve })
+    const clock = mock.clock(on, { now: new Date(2026, 9, 12, 9, 5).getTime() })
+    await $.session.start(START)
+
+    const running = $.command.run({ command: 'tk-handoff', args: '', ...RUN })
+    await started
+
+    world.percent.value = 80
+    await $.turn.complete(TURN)
+    await clock.settle()
+    expect(world.forks).toHaveLength(1)
+
+    release()
+    await running
+    expect(handoffFiles(world)).toHaveLength(1)
+  })
+})
 
 describe('자동 트리거', () => {
   test('75% 미만이면 만들지 않고, 이상이면 세션당 1회만 만든다', async ($, on) => {

@@ -6,6 +6,7 @@ import { OUTPUT_GITIGNORE, markNotified, outputDir } from '../shared/settings'
 import { ALL_ON } from '../shared/state'
 import {
   SVG_MAX_CHARS,
+  canRetryViaCmd,
   extractMermaid,
   failureReason,
   imageCells,
@@ -42,6 +43,10 @@ const runMmdc = async ($: EngineInterface, args: readonly string[]): Promise<Mmd
     return { kind: 'ran', result: await $.process.run(['mmdc', ...args], { timeoutMs: MMDC_TIMEOUT_MS }) }
   } catch {
     // 아래 cmd 재시도로 넘어간다.
+  }
+  // cmd는 인자를 다시 해석하므로 Windows에서, 메타문자가 없는 인자일 때만 재시도한다.
+  if (!/^[A-Za-z]:[\\/]/.test($.plugin.root) || !canRetryViaCmd(args)) {
+    return { kind: 'missing' }
   }
   try {
     const result = await $.process.run(['cmd', '/c', 'mmdc', ...args], { timeoutMs: MMDC_TIMEOUT_MS })
@@ -166,10 +171,23 @@ const prerender = async ($: EngineInterface, answer: string): Promise<void> => {
  *   그대로 쓰고, 블록 자리에만 Svg(desktop·vscode·mobile) / Image(terminal) / 원본 Code를 넣는다. 읽기만 한다.
  */
 export const registerDiagram = (on: On): void => {
+  let isRendering = false
+
   on('turn.complete', { reason: 'answer' }, async ($, e, next) => {
     const result = await next(e)
-    if ((await read($, modulesAtom)).diagram) {
-      await prerender($, e.answer)
+    if (!isRendering && (await read($, modulesAtom)).diagram) {
+      // mmdc는 블록마다 두 번 뜨는 무거운 일이라 턴 마무리를 붙잡지 않도록 타이머로 떼어 낸다. 한 번에 하나만 돈다.
+      isRendering = true
+      const answer = e.answer
+      $.clock.after(0, async () => {
+        try {
+          await prerender($, answer)
+        } catch {
+          // 미리 렌더는 부가 기능이라 실패해도 답변 흐름에 영향을 주지 않는다.
+        } finally {
+          isRendering = false
+        }
+      })
     }
     return result
   })
@@ -224,7 +242,7 @@ export const registerDiagram = (on: On): void => {
         )
       } else {
         const { Svg } = $.ui.resolve(e)
-        picture = <Svg source={render.svg ?? ''} alt={tr(lang, 'diagram.alt')} />
+        picture = <Svg key={`svg-${suffix}`} source={render.svg ?? ''} alt={tr(lang, 'diagram.alt')} />
       }
       parts.push(
         <Box key={`diagram-${index}`} flexDirection="column">

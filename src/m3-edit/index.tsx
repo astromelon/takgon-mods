@@ -58,7 +58,7 @@ const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<v
   }
 }
 
-/** headless 스크립트 실행 제한 시간. */
+/** headless 스크립트 실행 제한 시간. 공용 기본값(45초)보다 길다: 선택자 조회와 요소 스크린샷이 한 번 더 붙는다. */
 const HEADLESS_TIMEOUT_MS = 90_000
 
 const isOn = async ($: EngineInterface): Promise<boolean> => (await read($, modulesAtom)).edit

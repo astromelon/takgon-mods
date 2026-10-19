@@ -3,8 +3,10 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { projectId } from '../src/shared/keys'
 import {
+  MAX_PIN_TEXT,
   addPin,
   fit,
+  toPins,
   parsePanelArgs,
   parsePinArgs,
   applyAgentStatuses,
@@ -28,6 +30,12 @@ describe('M6 순수 로직', () => {
     }
     expect(pins).toHaveLength(100)
     expect(pins[0]?.id).toBe('p20')
+  })
+
+  test('핀 텍스트는 MAX_PIN_TEXT자로 자르고, 저장된 긴 핀도 복원할 때 자른다', () => {
+    const long = 'x'.repeat(MAX_PIN_TEXT + 500)
+    expect(addPin([], { id: 'a', text: long, createdAt: 0 })[0]?.text).toHaveLength(MAX_PIN_TEXT)
+    expect(toPins([{ id: 'a', text: long, createdAt: 1 }])[0]?.text).toHaveLength(MAX_PIN_TEXT)
 
     let agents = startAgent([], 'x', 'Explore', 1)
     agents = applyAgentStatuses(agents, [{ id: 'x', type: 'Explore', status: 'completed' }], 5)
@@ -196,6 +204,18 @@ describe('M6 명령·패널', () => {
     expect(await ui.find({ type: 'Text', text: /배포 전 확인/ })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: /마지막 답변/ })).toBeDefined()
     expect((await $.command.run(run('pin', 'list'))).text).not.toContain('배포 전 확인')
+  })
+
+  test('/pin을 동시에 여러 번 불러도 핀이 유실되지 않는다', async ($, on) => {
+    engine(on)
+    mock.store(on)
+    await $.session.start(START)
+
+    await Promise.all(['가', '나', '다', '라'].map(text => $.command.run(run('pin', text))))
+    const listed = (await $.command.run(run('pin', 'list'))).text ?? ''
+    for (const text of ['가', '나', '다', '라']) {
+      expect(listed).toContain(text)
+    }
   })
 
   test('/pin은 직전 응답이 없으면 안내만 한다', async ($, on) => {

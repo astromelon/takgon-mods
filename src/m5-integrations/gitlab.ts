@@ -24,16 +24,24 @@ export type GlabFailure = 'glab-missing' | 'glab-auth' | 'no-pr'
 /** 어느 CLI로 조회할지. */
 export type Forge = 'github' | 'gitlab'
 
+/** 원격 주소에서 호스트만 꺼낸다(`https://u:pw@host:port/...`, `ssh://git@host/...`, `git@host:path`). 못 읽으면 빈 문자열. */
+const hostOf = (url: string): string => {
+  const standard = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/@]*@)?(\[[^\]]+\]|[^/:?#]+)/i.exec(url)
+  const scp = /^(?:[^/@:]+@)?([^/:@]+):/.exec(url)
+  return (standard?.[1] ?? scp?.[1] ?? '').toLowerCase()
+}
+
 /**
- * 원격 주소 → forge. github.com이면 GitHub, 그 밖의 호스트(gitlab.com, 사내 셀프호스팅)는 GitLab으로 본다.
- * 원격이 없으면 null(배지를 조용히 숨긴다).
+ * 원격 주소 → forge. 호스트가 github.com이면 GitHub, 호스트 이름에 `gitlab`이 들어 있으면 GitLab(gitlab.com·사내 셀프호스팅)이다.
+ * 그 밖의 호스트(Bitbucket·Azure DevOps·`gitlab`이 없는 사내 호스트)와 원격이 없는 경우는 null이라 배지를 조용히 숨긴다.
+ * 경로·사용자 정보에 들어 있는 이름은 보지 않는다.
  */
 export const detectForge = (remoteUrl: string): Forge | null => {
-  const url = remoteUrl.trim()
-  if (url === '') {
-    return null
+  const host = hostOf(remoteUrl.trim())
+  if (/^(www\.)?github\.com$/.test(host)) {
+    return 'github'
   }
-  return /(^|[@/.])github\.com[:/]/i.test(url) ? 'github' : 'gitlab'
+  return host.includes('gitlab') ? 'gitlab' : null
 }
 
 /** GitLab 파이프라인 상태 → 체크 집계. */

@@ -5,9 +5,11 @@ import {
   consoleContext,
   extractLocalUrl,
   headlessCause,
+  isSafeExternalUrl,
   openExternalArgv,
   parseHeadlessOutput,
   platformOf,
+  spawnFailureCause,
   toBrowserInfo,
 } from '../src/m2-browser/logic'
 
@@ -35,13 +37,31 @@ describe('M2 순수 로직', () => {
     expect(headlessCause(0, { ok: true, status: 200, consoleErrors: [] })).toBeUndefined()
   })
 
+  test('빨리 거부되면 node 없음, 제한 시간이 거의 찬 뒤 거부되면 headless 실패다', () => {
+    expect(spawnFailureCause(5, 45_000)).toBe('node-missing')
+    expect(spawnFailureCause(40_499, 45_000)).toBe('node-missing')
+    expect(spawnFailureCause(40_500, 45_000)).toBe('headless-failed')
+    expect(spawnFailureCause(45_000, 45_000)).toBe('headless-failed')
+  })
+
   test('외부 브라우저 명령은 플랫폼별로 다르다', () => {
     expect(platformOf('C:\\Users\\me\\.claude\\plugins\\x')).toBe('windows')
     expect(platformOf('/Users/me/.claude/plugins/x')).toBe('mac')
     expect(platformOf('/home/me/.claude/plugins/x')).toBe('linux')
-    expect(openExternalArgv('windows', 'http://localhost:3000')).toEqual(['cmd', '/c', 'start', '', 'http://localhost:3000'])
+    expect(openExternalArgv('windows', 'http://localhost:3000')).toEqual(['rundll32', 'url.dll,FileProtocolHandler', 'http://localhost:3000'])
     expect(openExternalArgv('mac', 'http://localhost:3000')).toEqual(['open', 'http://localhost:3000'])
     expect(openExternalArgv('linux', 'http://localhost:3000')).toEqual(['xdg-open', 'http://localhost:3000'])
+  })
+
+  test('외부 열기 URL은 http(s)만 허용하고 cmd를 거치지 않는다', () => {
+    const risky = 'http://localhost:3000/?a=1&calc|x^y'
+    expect(openExternalArgv('windows', risky)[0]).not.toBe('cmd')
+    expect(openExternalArgv('windows', risky)).toEqual(['rundll32', 'url.dll,FileProtocolHandler', risky])
+    expect(isSafeExternalUrl(risky)).toBe(true)
+    expect(isSafeExternalUrl('https://example.com/a')).toBe(true)
+    expect(isSafeExternalUrl('file:///C:/Windows/System32/calc.exe')).toBe(false)
+    expect(isSafeExternalUrl('javascript:alert(1)')).toBe(false)
+    expect(isSafeExternalUrl('not a url')).toBe(false)
   })
 
   test('BrowserInfo는 HTTP 상태를 우선하고 에러는 20건으로 자른다', () => {

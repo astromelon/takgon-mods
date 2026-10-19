@@ -14,11 +14,13 @@ import {
   headlessArgv,
   headlessCause,
   isHttpUrl,
+  isSafeExternalUrl,
   MAX_ERRORS,
   openExternalArgv,
   PANE_ID,
   parseHeadlessOutput,
   platformOf,
+  spawnFailureCause,
   toBrowserInfo,
 } from './logic'
 import type { HeadlessCause, HeadlessResult } from './logic'
@@ -108,14 +110,15 @@ const runHeadless = async (
 ): Promise<{ result?: HeadlessResult; cause?: HeadlessCause }> => {
   const script = `${$.plugin.root.replace(/\\/g, '/')}/tools/headless.mjs`
   const out = await browseDir($)
+  const startedAt = await $.clock.now()
   try {
     const run = await $.process.run(headlessArgv(script, url, out), { timeoutMs: HEADLESS_TIMEOUT_MS })
     const result = parseHeadlessOutput(run.stdout)
     const cause = headlessCause(run.exitCode, result)
     return cause === undefined ? { result } : { cause }
   } catch {
-    // 시작 실패(ENOENT)와 시간 초과 모두 여기로 온다. 시간 초과는 드물어 node 없음으로 안내한다.
-    return { cause: 'node-missing' }
+    // 시작 실패와 시간 초과가 같은 거부로 오므로 걸린 시간으로 가른다(시간 초과는 결과를 읽지 못한 것으로 안내).
+    return { cause: spawnFailureCause((await $.clock.now()) - startedAt, HEADLESS_TIMEOUT_MS) }
   }
 }
 
@@ -135,6 +138,10 @@ const browse = async ($: EngineInterface, url: string): Promise<BrowserInfo> => 
 const openExternal = async ($: EngineInterface): Promise<void> => {
   const info = await read($, browserAtom)
   if (info === null) {
+    return
+  }
+  if (!isSafeExternalUrl(info.url)) {
+    await notifyOnce($, 'open-failed')
     return
   }
   try {
@@ -270,8 +277,8 @@ export const registerBrowser = (on: On): void => {
         <Text>{statusText}</Text>
         {info.title !== undefined && <Text>{tr(lang, 'pane.pageTitle', { title: info.title })}</Text>}
         <Text bold>{errorsHeader}</Text>
-        {errors.map(error => (
-          <Text color="red">- {error}</Text>
+        {errors.map((error, index) => (
+          <Text key={`error-${index}`} color="red">- {error}</Text>
         ))}
         {hidden > 0 && <Text dimColor>{tr(lang, 'pane.more', { count: hidden })}</Text>}
         {shot}

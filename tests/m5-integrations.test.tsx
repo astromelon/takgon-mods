@@ -85,9 +85,24 @@ describe('GitLab 해석(순수)', () => {
   test('원격 주소로 forge를 고른다', () => {
     expect(detectForge('https://github.com/o/r.git')).toBe('github')
     expect(detectForge('git@github.com:o/r.git')).toBe('github')
-    expect(detectForge('http://10.0.0.1:8030/o/r.git')).toBe('gitlab')
+    expect(detectForge('https://gitlab.corp.example.com/o/r.git')).toBe('gitlab')
     expect(detectForge('git@gitlab.com:g/p.git')).toBe('gitlab')
+    expect(detectForge('ssh://git@gitlab.example.com:2222/g/p.git')).toBe('gitlab')
     expect(detectForge('')).toBeNull()
+  })
+
+  test('github·gitlab이 아닌 호스트는 판별하지 않는다', () => {
+    expect(detectForge('http://10.0.0.1:8030/o/r.git')).toBeNull()
+    expect(detectForge('git@bitbucket.org:o/r.git')).toBeNull()
+    expect(detectForge('https://dev.azure.com/o/p/_git/r')).toBeNull()
+    expect(detectForge('https://git.corp.example.com/o/r.git')).toBeNull()
+  })
+
+  test('경로·사용자 정보의 이름은 호스트로 보지 않는다', () => {
+    expect(detectForge('https://git.corp.example.com/gitlab/r.git')).toBeNull()
+    expect(detectForge('https://github.com.evil.example/o/r.git')).toBeNull()
+    expect(detectForge('https://user:pw@github.com/o/r.git')).toBe('github')
+    expect(detectForge('https://www.github.com/o/r.git')).toBe('github')
   })
 
   test('glab mr view JSON → MR 상태(파이프라인·변경 요청)', () => {
@@ -139,7 +154,7 @@ describe('GitLab MR 폴링', () => {
         return { exitCode: 0, stdout: JSON.stringify(view), stderr: '' }
       },
       [],
-      'http://10.0.0.1:8030/o/r.git',
+      'https://gitlab.corp.example.com/o/r.git',
     )
     const clock = mock.clock(on)
     mock.store(on)
@@ -175,7 +190,7 @@ describe('GitLab MR 폴링', () => {
       on,
       () => (mode === 'missing' ? undefined : { exitCode: 1, stdout: '', stderr: '401 Unauthorized. glab auth login' }),
       toasts,
-      'http://10.0.0.1:8030/o/r.git',
+      'https://gitlab.corp.example.com/o/r.git',
     )
     const clock = mock.clock(on)
     mock.store(on)
@@ -243,6 +258,7 @@ const engine = (
   gh: (argv: readonly string[]) => Run | undefined,
   toasts: string[] = [],
   remote = 'https://github.com/o/r.git',
+  gate?: Promise<void>,
 ): { ghCalls: () => number } => {
   let calls = 0
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -251,13 +267,14 @@ const engine = (
     toasts.push(e.text)
     return { value: undefined }
   })
-  on('process.run', ($, e) => {
+  on('process.run', async ($, e) => {
     // forge 판별용 `git remote get-url origin`은 원격 주소로 답하고 호출 수에서 뺀다.
     if (e.argv[0] === 'git') {
       return { value: { exitCode: 0, stdout: `${remote}
 `, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     }
     calls += 1
+    await gate
     const result = gh(e.argv)
     if (result === undefined) {
       throw new Error('spawn gh ENOENT')
@@ -372,6 +389,64 @@ describe('GitHub PR 폴링', () => {
     await $.turn.complete(turn)
     await clock.settle()
     expect(gh.ghCalls()).toBe(2)
+  })
+
+  test('갱신이 진행 중이면 폴링이 gh를 다시 띄우지 않는다', async ($, on) => {
+    let release: () => void = () => undefined
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const gh = engine(on, () => NO_PR, [], 'https://github.com/o/r.git', gate)
+    const clock = mock.clock(on)
+    mock.store(on)
+    mock.env(on, {})
+
+    await $.session.start(START)
+    await clock.settle()
+    await clock.advance(60_000)
+    await clock.advance(60_000)
+    expect(gh.ghCalls()).toBe(1)
+
+    release()
+    await clock.settle()
+    await clock.advance(60_000)
+    expect(gh.ghCalls()).toBe(2)
+  })
+
+  test('모듈을 끄면 다음 갱신에서 PR 배지를 비운다', async ($, on) => {
+    engine(on, () => ({
+      exitCode: 0,
+      stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', reviewDecision: '', statusCheckRollup: [] }),
+      stderr: '',
+    }))
+    on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+      const { Text } = $.ui.resolve(e)
+      return <Text key="engine-band">engine-band</Text>
+    })
+    const clock = mock.clock(on)
+    mock.store(on)
+    mock.env(on, {})
+    const band = async () =>
+      $.ui.mount({
+        plugin: 'takgon-mods',
+        surface: 'terminal',
+        component: 'AbovePrompt',
+        props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 9 }, view: {} },
+      })
+
+    await $.session.start(START)
+    await clock.settle()
+    expect((await (await band()).find({ key: 'pr-badge' }))?.text).toContain('PR #7')
+
+    await $.command.run({
+      command: 'mods',
+      args: 'integrations off',
+      origin: { kind: 'composer' },
+      presentation: { isFullscreen: false, columns: 120 },
+    })
+    await clock.advance(60_000)
+
+    expect(await (await band()).find({ key: 'pr-badge' })).toBeUndefined()
   })
 
   test('모듈이 꺼져 있으면 gh를 실행하지 않는다', async ($, on) => {

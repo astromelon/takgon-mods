@@ -64,6 +64,12 @@ const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<v
   }
 }
 
+/** 자동 인수인계 임계치(컨텍스트 %) 전역 store 키. 없으면 75. */
+const THRESHOLD_KEY = globalKey('m7', 'threshold')
+
+/** 이 시간이 지나도 끝나지 않은 생성은 멈춘 것으로 보고 새로 시작한다(`$.model.fork`에는 시간 상한이 없다). */
+const GENERATING_STUCK_MS = 5 * 60_000
+
 /** 최신본 store 키: `p/{pid}/m7/latest`. */
 const latestKey = async ($: EngineInterface): Promise<string> =>
   projectKey(projectId(await $.session.root()), 'm7', 'latest')
@@ -166,10 +172,7 @@ const start = async ($: EngineInterface): Promise<void> => {
   await ensureRestored($)
 }
 
-/** `/tk-handoff [show|load]` 처리. */
-/** 자동 인수인계 임계치(컨텍스트 %) 전역 store 키. 없으면 75. */
-const THRESHOLD_KEY = globalKey('m7', 'threshold')
-
+/** `/tk-handoff [show|load|threshold]` 처리. 새 문서 생성(`create`)의 겹침 검사는 호출하는 훅이 한다. */
 const runCommand = async ($: EngineInterface, args: string): Promise<string> => {
   const lang = await read($, langAtom)
   if (!(await isOn($))) {
@@ -247,7 +250,24 @@ const takePending = async ($: EngineInterface): Promise<string | null> => {
  * 1회에 문서를 context로 붙인다. 임계 판정은 `session.measure`(M6 전용) 대신 `turn.complete`에서 한다.
  */
 export const registerHandoff = (on: On): void => {
-  let isGenerating = false
+  // 자동 생성과 수동 `/tk-handoff`가 같이 쓴다. 시작 시각을 남겨 GENERATING_STUCK_MS가 지나면 끝난 것으로 본다.
+  let generatingStartedAt: number | undefined
+
+  /** 생성 중이 아니면 시작 표시를 남기고 그 표시를 돌려준다. 이미 생성 중이면 `undefined`. `$`는 import 경계 규칙상 받지 않는다. */
+  const claimGenerating = (now: number): number | undefined => {
+    if (generatingStartedAt !== undefined && now - generatingStartedAt < GENERATING_STUCK_MS) {
+      return undefined
+    }
+    generatingStartedAt = now
+    return now
+  }
+
+  /** 멈췄다 풀려난 오래된 생성이 새 생성의 표시를 지우지 않게 자기 표시일 때만 해제한다. */
+  const releaseGenerating = (claim: number): void => {
+    if (generatingStartedAt === claim) {
+      generatingStartedAt = undefined
+    }
+  }
 
   on('session.start', { isInteractive: true }, async ($, e, next) => {
     await start($)
@@ -256,22 +276,33 @@ export const registerHandoff = (on: On): void => {
 
   on('command.run', { command: 'tk-handoff' }, async ($, e) => {
     await ensureRestored($)
-    return { text: await runCommand($, e.args) }
+    if (parseHandoffArgs(e.args) !== 'create') {
+      return { text: await runCommand($, e.args) }
+    }
+    const claim = claimGenerating(await $.clock.now())
+    if (claim === undefined) {
+      return { text: tr(await read($, langAtom), 'cmd.busy') }
+    }
+    try {
+      return { text: await runCommand($, e.args) }
+    } finally {
+      releaseGenerating(claim)
+    }
   })
 
   on('turn.complete', { reason: 'answer' }, async ($, e, next) => {
     await ensureRestored($)
     const result = await next(e)
-    if (e.agentId === undefined && !isGenerating) {
+    const claim = e.agentId === undefined ? claimGenerating(await $.clock.now()) : undefined
+    if (claim !== undefined) {
       // fork는 시간 상한을 줄 수 없어 턴 마무리를 붙잡지 않도록 타이머로 떼어 낸다. 한 번에 하나만 돈다.
-      isGenerating = true
       $.clock.after(0, async () => {
         try {
           await autoHandoff($)
         } catch {
           // 자동 생성 실패는 답변 흐름에 영향을 주지 않는다.
         } finally {
-          isGenerating = false
+          releaseGenerating(claim)
         }
       })
     }
