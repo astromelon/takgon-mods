@@ -19,6 +19,8 @@ const isKeepGoing = flags.has('--keep-going');
 // shell을 쓰는 이유: Windows에서 claude·npx가 .cmd 셈이라 직접 실행이 안 된다. 인자는 모두 고정 문자열이다.
 const run = (command) => spawnSync(command, { cwd: root, stdio: 'inherit', shell: true });
 
+const hasPwsh = spawnSync('pwsh -NoProfile -Command exit 0', { cwd: root, shell: true, stdio: 'ignore' }).status === 0;
+
 const steps = [
   ...(flags.has('--install-deps')
     ? [{ name: 'e2e 의존성 설치', command: 'pip install -r tools/e2e/requirements.txt' }]
@@ -26,6 +28,10 @@ const steps = [
   { name: 'Check release version', command: 'node tools/release.mjs --check' },
   { name: 'Check release tags', command: 'node tools/release.mjs --check-tags' },
   { name: 'Test store-backup script (PS 5.1)', command: 'powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-store-backup.ps1' },
+  // CI는 PowerShell 7로도 돌린다. pwsh가 없으면 이 단계는 건너뛰고 요약에 남긴다.
+  ...(hasPwsh
+    ? [{ name: 'Test store-backup script (PS 7)', command: 'pwsh -NoProfile -File tools/test-store-backup.ps1 -Shell pwsh.exe' }]
+    : []),
   { name: 'Validate plugin', command: 'claude plugin validate .' },
   { name: 'Test plugin', command: 'claude plugin test .' },
   { name: 'Test e2e harness', command: 'python -m unittest discover -s tools/e2e -p "test_*.py"' },
@@ -54,6 +60,9 @@ for (const step of steps) {
 console.log('\n=== 요약 ===');
 for (const { name, isOk, seconds } of results) {
   console.log(`${isOk ? '✓' : '✗'} ${name} (${seconds}s)`);
+}
+if (!hasPwsh) {
+  console.log('- PS 7 단계 건너뜀: pwsh를 찾지 못했다(CI는 돌린다).');
 }
 const skipped = steps.length - results.length;
 if (skipped > 0) {

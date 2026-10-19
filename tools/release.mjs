@@ -5,6 +5,7 @@
 //   node tools/release.mjs --check-tags   # 태그 vX.Y.Z마다 그 커밋의 plugin.json·CHANGELOG 버전이 X.Y.Z인지, 현재 버전 태그가 있는지 검사(CI용, 전체 이력 필요)
 //
 // 기본은 파일만 수정한다. --commit은 커밋하고 주석 태그 v<x.y.z>를 단다. --push는 커밋과 태그를 push한다(--commit을 포함).
+// --push는 현재 브랜치가 main일 때만 한다. 커밋 메시지에 트레일러(예: Co-Authored-By)를 넣으려면 환경변수 RELEASE_TRAILER로 준다.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -115,6 +116,10 @@ if (!isGreater(next, currentVersion)) fail(`새 버전 ${next}는 현재 ${curre
 
 if (git('status', '--porcelain').trim()) fail('작업 트리가 깨끗하지 않다. 먼저 커밋하거나 stash한다.');
 
+// 파일을 고치기 전에 막는다. 다른 브랜치에서 버전을 올려 push하면 릴리스 이력이 갈라진다.
+const branch = git('rev-parse', '--abbrev-ref', 'HEAD').trim();
+if (flags.has('--push') && branch !== 'main') fail(`--push는 main 브랜치에서만 한다(현재: ${branch}).`);
+
 const tag = `v${next}`;
 if ((flags.has('--commit') || flags.has('--push')) && git('tag', '--list', tag).trim()) {
   fail(`태그 ${tag}가 이미 있다.`);
@@ -137,7 +142,8 @@ console.log(`${currentVersion} → ${next} (${today})`);
 
 if (flags.has('--commit') || flags.has('--push')) {
   git('add', '.claude-plugin/plugin.json', 'CHANGELOG.md');
-  git('commit', '-m', `build: ${next}로 버전을 올리고 CHANGELOG 정리\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`);
+  const trailer = process.env.RELEASE_TRAILER?.trim();
+  git('commit', '-m', `build: ${next}로 버전을 올리고 CHANGELOG 정리${trailer ? `\n\n${trailer}` : ''}`);
   console.log('커밋 완료');
   git('tag', '-a', tag, '-m', tag);
   console.log(`태그 ${tag} 생성`);

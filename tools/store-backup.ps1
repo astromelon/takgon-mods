@@ -73,7 +73,7 @@ function Assert-MarketplaceName([string]$market) {
 function Get-StoreFileName([string]$market) {
   Assert-MarketplaceName $market
   $sha = [System.Security.Cryptography.SHA256]::Create()
-  $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("$PluginName@$market"))
+  try { $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("$PluginName@$market")) } finally { $sha.Dispose() }
   $hash = (($bytes | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 12)
   return "${PluginName}_${market}-${hash}.json"
 }

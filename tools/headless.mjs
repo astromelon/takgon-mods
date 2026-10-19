@@ -10,6 +10,8 @@
  *
  * 출력(계약): stdout 마지막 줄에 JSON 한 줄
  *   { ok, status, title?, consoleErrors, screenshot?, element?: { selector, computedStyle, screenshot? }, error? }
+ * `ok`는 응답을 받았고 상태가 2xx·3xx일 때만 true다(응답 없음 status 0, 4xx·5xx는 false). 호출 쪽은 `ok`로 성공을
+ * 가르지 말고 `status`·`error`를 함께 본다.
  * playwright를 못 찾으면 exit code 2 + `{ ok:false, status:0, consoleErrors:[], error:'playwright-missing' }`.
  */
 import { mkdirSync } from 'node:fs'
@@ -121,7 +123,7 @@ const main = async () => {
     await page.screenshot({ path: screenshot, fullPage: true })
 
     const result = {
-      ok: status === 0 || (status >= 200 && status < 400),
+      ok: status >= 200 && status < 400,
       status,
       title: await page.title(),
       consoleErrors,
