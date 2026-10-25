@@ -5,10 +5,10 @@ import type { Engine } from 'claude-code/testing'
 import {
   judgeEdit,
   parseEditArgs,
-  parseHeadlessOutput,
   resolvePath,
   sliceLines,
 } from '../src/m3-edit/logic'
+import { parseHeadlessOutput } from '../src/shared/headless'
 
 describe('범위 파싱(순수)', () => {
   test('경로:시작-끝, Windows 드라이브 경로, 단일 행', () => {

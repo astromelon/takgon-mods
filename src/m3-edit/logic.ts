@@ -1,14 +1,11 @@
 /**
  * M3 Select-to-Edit의 순수 로직: `/edit` 인자 해석, 경로 정규화, 행 범위 발췌, Edit 범위 판정,
- * headless 출력 해석, 모델 컨텍스트 문구.
+ * 모델 컨텍스트 문구. headless 출력 해석은 `shared/headless.ts`(M2와 공용).
  *
  * `$`를 받지 않으므로 단위 테스트로 직접 검증한다.
  */
 import type { EditTarget, Lang } from '../../types'
 import { tr } from './messages'
-
-export { parseHeadlessOutput } from '../shared/headless'
-export type { HeadlessResult } from '../shared/headless'
 
 /** 발췌 상한(문자). */
 export const EXCERPT_MAX = 2000

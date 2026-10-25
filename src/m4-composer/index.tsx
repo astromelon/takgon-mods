@@ -6,9 +6,10 @@ import { globalKey, projectId, projectKey } from '../shared/keys'
 import { t } from '../shared/i18n'
 import { commandsKey, markNotified, refusalReason, registerCause, toCommandMap } from '../shared/settings'
 import { ALL_ON } from '../shared/state'
+import { toTasks, toggleTask } from '../shared/tasks'
+import { fit } from '../shared/text'
 import {
   buildForkPrompt,
-  fit,
   formatPrBadge,
   hadToolUseThisTurn,
   mergeTasks,
@@ -18,8 +19,6 @@ import {
   parseCoachReply,
   parseNextSteps,
   shouldFork,
-  toTasks,
-  toggleTask,
 } from './logic'
 import { tr } from './messages'
 

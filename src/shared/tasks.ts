@@ -3,7 +3,8 @@
  */
 import type { TaskItem } from '../../types'
 
-const KINDS: readonly TaskItem['kind'][] = ['checkbox', 'issue', 'pr']
+/** 할 일 렌더러 종류 전체. 모르는 값은 checkbox로 본다. */
+export const TASK_KINDS: readonly TaskItem['kind'][] = ['checkbox', 'issue', 'pr']
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -20,7 +21,7 @@ export const toTasks = (value: unknown): TaskItem[] =>
         .map(one => ({
           id: String(one.id),
           text: String(one.text),
-          kind: KINDS.includes(one.kind as TaskItem['kind']) ? (one.kind as TaskItem['kind']) : 'checkbox',
+          kind: TASK_KINDS.includes(one.kind as TaskItem['kind']) ? (one.kind as TaskItem['kind']) : 'checkbox',
           isDone: one.isDone === true,
           createdAt: typeof one.createdAt === 'number' ? one.createdAt : 0,
         }))

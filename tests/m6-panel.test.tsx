@@ -2,10 +2,10 @@ import type { AgentStatus, On, SessionMeasureInput } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { projectId } from '../src/shared/keys'
+import { fit } from '../src/shared/text'
 import {
   MAX_PIN_TEXT,
   addPin,
-  fit,
   toPins,
   parsePanelArgs,
   parsePinArgs,

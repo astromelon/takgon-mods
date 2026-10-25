@@ -6,13 +6,13 @@ import { projectId } from '../shared/keys'
 import { OUTPUT_GITIGNORE, commandsKey, markNotified, outputDir, refusalReason, registerCause, toCommandMap } from '../shared/settings'
 import { t } from '../shared/i18n'
 import { ALL_ON } from '../shared/state'
+import { headlessArgv, parseHeadlessOutput } from '../shared/headless'
 import {
   describeForModel,
   isSamePath,
   judgeEdit,
   lineDelta,
   parseEditArgs,
-  parseHeadlessOutput,
   resolvePath,
   sliceLines,
   summarizeTarget,
@@ -58,7 +58,7 @@ const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<v
   }
 }
 
-/** headless 스크립트 실행 제한 시간. 공용 기본값(45초)보다 길다: 선택자 조회와 요소 스크린샷이 한 번 더 붙는다. */
+/** headless 스크립트 실행 제한 시간. M2(45초)보다 길다: 선택자 조회와 요소 스크린샷이 한 번 더 붙는다. */
 const HEADLESS_TIMEOUT_MS = 90_000
 
 const isOn = async ($: EngineInterface): Promise<boolean> => (await read($, modulesAtom)).edit
@@ -144,7 +144,7 @@ const targetDom = async (
   }
   const dir = outputDir(await $.session.root())
   await ensureOutputDir($, dir)
-  const argv = ['node', script, '--url', url, '--out', `${dir}/browse`, '--selector', action.selector]
+  const argv = headlessArgv(script, url, `${dir}/browse`, action.selector)
   let stdout = ''
   let exitCode = 1
   try {

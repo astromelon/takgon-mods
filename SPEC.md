@@ -23,7 +23,7 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
 ├── types/index.d.ts                # [추가] $.state 계약 (interface PluginState { "takgon-mods": {...} })
 ├── src/
 │   ├── index.ts                    # [수정] 단일 진입점: 각 모듈 register를 import해 순서대로 호출
-│   ├── shared/                     # i18n, keys(네임스페이스), settings, providers, render 헬퍼
+│   ├── shared/                     # i18n, keys(네임스페이스), settings 등 순수 함수·상수
 │   └── m1-i18n/ … m8-diagram/      # 모듈당 register(on, ctx) 하나씩
 └── tests/                          # *.test.ts (claude-code/testing)
 ```

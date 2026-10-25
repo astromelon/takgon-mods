@@ -7,11 +7,11 @@ import {
   headlessCause,
   isSafeExternalUrl,
   openExternalArgv,
-  parseHeadlessOutput,
   platformOf,
   spawnFailureCause,
   toBrowserInfo,
 } from '../src/m2-browser/logic'
+import { headlessArgv, parseHeadlessOutput } from '../src/shared/headless'
 
 describe('M2 순수 로직', () => {
   test('출력에서 첫 로컬 URL만 뽑는다', () => {
@@ -27,6 +27,13 @@ describe('M2 순수 로직', () => {
     expect(parseHeadlessOutput(`log line\n${json}\n`)?.title).toBe('App')
     expect(parseHeadlessOutput('not json')).toBeUndefined()
     expect(parseHeadlessOutput('{"ok":true}')).toBeUndefined()
+  })
+
+  test('headless argv: selector는 있을 때만 붙는다', () => {
+    expect(headlessArgv('s.mjs', 'http://localhost:1/', 'out')).toEqual(['node', 's.mjs', '--url', 'http://localhost:1/', '--out', 'out'])
+    expect(headlessArgv('s.mjs', 'http://localhost:1/', 'out', '.a b')).toEqual([
+      'node', 's.mjs', '--url', 'http://localhost:1/', '--out', 'out', '--selector', '.a b',
+    ])
   })
 
   test('headless 실패 원인 판정', () => {

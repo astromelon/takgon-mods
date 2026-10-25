@@ -6,24 +6,24 @@ import { projectId } from '../shared/keys'
 import { OUTPUT_GITIGNORE, commandsKey, markNotified, outputDir, refusalReason, registerCause, toCommandMap } from '../shared/settings'
 import { t } from '../shared/i18n'
 import { ALL_ON } from '../shared/state'
+import { headlessArgv, parseHeadlessOutput } from '../shared/headless'
+import type { HeadlessResult } from '../shared/headless'
 import {
   bashOutputText,
   consoleContext,
   extractLocalUrl,
   HEADLESS_TIMEOUT_MS,
-  headlessArgv,
   headlessCause,
   isHttpUrl,
   isSafeExternalUrl,
   MAX_ERRORS,
   openExternalArgv,
   PANE_ID,
-  parseHeadlessOutput,
   platformOf,
   spawnFailureCause,
   toBrowserInfo,
 } from './logic'
-import type { HeadlessCause, HeadlessResult } from './logic'
+import type { HeadlessCause } from './logic'
 import { tr } from './messages'
 import type { BrowserKey } from './messages'
 

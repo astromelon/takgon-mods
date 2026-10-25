@@ -4,8 +4,16 @@
  * `$`를 받지 않는다. 스크립트 실행은 각 모듈의 index.tsx가 하고, 여기서는 stdout 마지막 줄 JSON만 읽는다.
  */
 
-/** headless 스크립트 실행 제한 시간 기본값. 모듈은 자기 사정에 맞춰 덮어쓴다(M2 45초, M3 90초). */
-export const HEADLESS_TIMEOUT_MS = 45_000
+/** headless 스크립트 argv. `selector`가 있으면 그 요소의 computed style·스크린샷도 모은다(M3). */
+export const headlessArgv = (script: string, url: string, out: string, selector?: string): string[] => [
+  'node',
+  script,
+  '--url',
+  url,
+  '--out',
+  out,
+  ...(selector === undefined ? [] : ['--selector', selector]),
+]
 
 /** `tools/headless.mjs`가 stdout 마지막 줄에 내는 JSON. */
 export type HeadlessResult = {

@@ -6,12 +6,13 @@ import { t, toLang } from '../shared/i18n'
 import { globalKey, projectId, projectKey } from '../shared/keys'
 import { commandsKey, markNotified, refusalReason, registerCause, toCommandMap, toPercent } from '../shared/settings'
 import { ALL_ON } from '../shared/state'
+import { toTasks, toggleTask } from '../shared/tasks'
+import { fit } from '../shared/text'
 import {
   PANE_ID,
   TABS,
   USAGE_THRESHOLD,
   addPin,
-  fit,
   formatTokens,
   lastAssistantText,
   parsePanelArgs,
@@ -21,8 +22,6 @@ import {
   startAgent,
   toPins,
   toSnapshot,
-  toTasks,
-  toggleTask,
   usageAlerts,
   visible,
 } from './logic'
@@ -243,7 +242,7 @@ export const registerPanel = (on: On): void => {
       return { text: tr(lang, 'panel.usage') }
     }
     if (action === 'close') {
-      await $.ui.close({ id: 'takgon-panel' })
+      await $.ui.close({ id: PANE_ID })
       return { text: tr(lang, 'panel.closed') }
     }
     if (typeof action === 'object') {
@@ -267,7 +266,7 @@ export const registerPanel = (on: On): void => {
       }
     }
     await refreshAgents($)
-    await $.ui.open({ id: 'takgon-panel', title: tr(lang, 'panel.title') })
+    await $.ui.open({ id: PANE_ID, title: tr(lang, 'panel.title') })
     return { text: tr(lang, 'panel.opened') }
   })
 
@@ -318,6 +317,7 @@ export const registerPanel = (on: On): void => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
+  // matcher는 리터럴이어야 validate가 읽는다(PANE_ID와 같은 값).
   on('ui.render', { component: 'Pane', requestId: 'takgon-panel' }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const lang = await langOf($)

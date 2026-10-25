@@ -3,10 +3,8 @@
  *
  * `$`를 받지 않는다(엔진이 import 경계 너머의 `$` 전달을 거부한다). store·state 접근은 `index.tsx`에서 한다.
  */
-import type { AgentRun, PanelTab, Pin, TaskItem, UsageSnapshot } from '../../types'
+import type { AgentRun, PanelTab, Pin, UsageSnapshot } from '../../types'
 import { parsePercent } from '../shared/settings'
-import { toTasks, toggleTask } from '../shared/tasks'
-import { fit } from '../shared/text'
 
 /** pane id. `ui.render`의 `requestId`와 같다. */
 export const PANE_ID = 'takgon-panel'
@@ -225,6 +223,3 @@ export const visible = <T>(items: readonly T[], rows: number): { shown: T[]; hid
   const shown = items.slice(0, Math.max(1, room - 1))
   return { shown, hidden: items.length - shown.length }
 }
-
-// 같은 이름으로 쓰던 공용 함수를 이 모듈의 공개 API로 다시 내보낸다.
-export { fit, toTasks, toggleTask }

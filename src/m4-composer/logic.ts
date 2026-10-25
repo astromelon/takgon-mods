@@ -4,8 +4,7 @@
  * `$`를 받지 않는다(엔진은 `$`를 import 경계 너머로 넘기는 것을 거부한다). store·state·ui 호출은 index.tsx에 둔다.
  */
 import type { Lang, PrStatus, TaskItem } from '../../types'
-import { toTasks, toggleTask } from '../shared/tasks'
-import { fit } from '../shared/text'
+import { TASK_KINDS } from '../shared/tasks'
 import { tr } from './messages'
 import type { ComposerKey } from './messages'
 
@@ -25,7 +24,6 @@ const MAX_TASK_TEXT = 200
 const COACH_MAX_LENGTH = 80
 
 const REVIEWS = ['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED'] as const
-const KINDS: readonly TaskItem['kind'][] = ['checkbox', 'issue', 'pr']
 
 /** `PR #12 · 승인됨 · 체크 실패`(GitLab은 `MR !12 …`). 비어 있거나 모르는 상태는 생략한다. */
 export const formatPrBadge = (lang: Lang, pr: PrStatus): string => {
@@ -73,7 +71,7 @@ export const parseNextSteps = (text: string): NextStep[] => {
     if (one === '') {
       continue
     }
-    const kind = KINDS.find(k => k === raw.kind) ?? 'checkbox'
+    const kind = TASK_KINDS.find(k => k === raw.kind) ?? 'checkbox'
     steps.push({ text: one, kind })
     if (steps.length === BAND_TASKS) {
       break
@@ -210,6 +208,3 @@ export const buildForkPrompt = (lang: Lang, existing: readonly TaskItem[]): stri
   const head = tr(lang, 'fork.prompt')
   return open.length === 0 ? head : `${head}\n\n${tr(lang, 'fork.existing', { items: open.join('\n') })}`
 }
-
-// 같은 이름으로 쓰던 공용 함수를 이 모듈의 공개 API로 다시 내보낸다.
-export { fit, toTasks, toggleTask }

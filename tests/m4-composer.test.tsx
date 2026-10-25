@@ -2,8 +2,9 @@ import type { On, SessionMessage } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import type { TaskItem } from '../types'
+import { toTasks, toggleTask } from '../src/shared/tasks'
+import { fit } from '../src/shared/text'
 import {
-  fit,
   formatPrBadge,
   hadToolUseThisTurn,
   mergeTasks,
@@ -12,8 +13,6 @@ import {
   parseCoachReply,
   parseNextSteps,
   shouldFork,
-  toTasks,
-  toggleTask,
 } from '../src/m4-composer/logic'
 
 const task = (id: string, text: string, isDone = false, createdAt = 0): TaskItem => ({

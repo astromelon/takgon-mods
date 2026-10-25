@@ -4,11 +4,7 @@
  * `$`를 받지 않으므로 단위 테스트로 직접 검증한다.
  */
 import type { BrowserInfo } from '../../types'
-import { HEADLESS_TIMEOUT_MS as DEFAULT_HEADLESS_TIMEOUT_MS } from '../shared/headless'
 import type { HeadlessResult } from '../shared/headless'
-
-export { parseHeadlessOutput } from '../shared/headless'
-export type { HeadlessResult } from '../shared/headless'
 
 /** pane id이자 `ui.render`의 requestId. */
 export const PANE_ID = 'takgon-browser'
@@ -16,8 +12,8 @@ export const PANE_ID = 'takgon-browser'
 /** 화면·첨부에 남기는 콘솔 에러 최대 건수. */
 export const MAX_ERRORS = 20
 
-/** headless 스크립트 실행 제한 시간. 공용 기본값(45초)이 스크립트의 기본 대기(3초)와 브라우저 기동을 넉넉히 덮는다. */
-export const HEADLESS_TIMEOUT_MS = DEFAULT_HEADLESS_TIMEOUT_MS
+/** headless 스크립트 실행 제한 시간. 스크립트의 기본 대기(3초)와 브라우저 기동을 넉넉히 덮는다. */
+export const HEADLESS_TIMEOUT_MS = 45_000
 
 /** headless 실패 원인. toast 1회 판정 키(`m2/<원인>`)로도 쓴다. */
 export type HeadlessCause = 'node-missing' | 'playwright-missing' | 'headless-failed'
@@ -70,16 +66,6 @@ export const headlessCause = (
  */
 export const spawnFailureCause = (elapsedMs: number, timeoutMs: number): HeadlessCause =>
   elapsedMs >= timeoutMs * 0.9 ? 'headless-failed' : 'node-missing'
-
-/** headless 스크립트 argv. */
-export const headlessArgv = (script: string, url: string, out: string): string[] => [
-  'node',
-  script,
-  '--url',
-  url,
-  '--out',
-  out,
-]
 
 /** 절대 경로 모양으로 플랫폼을 고른다(엔진이 OS를 알려주지 않으므로 플러그인 루트 경로로 판단). */
 export const platformOf = (path: string): Platform => {

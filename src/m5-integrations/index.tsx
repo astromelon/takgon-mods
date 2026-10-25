@@ -440,8 +440,8 @@ const init = async ($: EngineInterface): Promise<void> => {
 /**
  * M5: GitHub PR 상태와 Linear 이슈 연동.
  *
- * Provider 인터페이스(`shared/providers.ts`)는 `$`를 import 경계 너머로 넘겨야 해 그대로 쓸 수 없다.
- * 같은 의미의 getStatus·search·link를 이 파일 최상위에 두고, 쿼리·해석은 `github.ts`·`linear.ts`로 분리했다.
+ * 연동별 Provider 인터페이스로 나누면 `$`를 import 경계 너머로 넘겨야 해 쓸 수 없다.
+ * getStatus·search·link를 이 파일 최상위에 두고, 쿼리·해석은 `github.ts`·`gitlab.ts`·`linear.ts`로 분리했다.
  */
 export const registerIntegrations = (on: On): void => {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
