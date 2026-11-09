@@ -149,7 +149,7 @@
 ### Phase 3: 파이프라인 계획서 형식에 `# 브랜치` 추가 (ai-global-pipeline)
 **Goal**: Claude가 쓰는 계획서에 브랜치가 들어가 가드가 실제로 켜지게 한다
 **Estimated Time**: 0.5h
-**Status**: ✅ Complete (공개 저장소 반영은 Node 4 승인 대기)
+**Status**: ✅ Complete (ai-global-pipeline `main` bf2c6d6 반영)
 **Depends on**: 없음(Phase 2와 병행 가능). 이 페이즈는 **takgon-mods 저장소 밖** 작업이다
 
 - [x] **Task 3.1** 마스터 `~/.ai-global-pipeline.md` [Handoff] "계획서 형식"에 `# 브랜치`(Node 2에서 만든 브랜치명)를 `# 작업` 다음에 추가
@@ -299,6 +299,6 @@ node tools/ci-local.mjs        # Phase 6
 
 ---
 
-**Plan Status**: ⏳ 승인됨, 구현 전
+**Plan Status**: 🔄 In Progress (Phase 1~3 완료)
 **Next Action**: Phase 4 RED 테스트(게이트 로그·동기화 이벤트 파싱) 작성
 **Blocked By**: None
