@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Added
+- M3: ai-global-pipeline 계획서 범위 가드. 계획서(`.git/ai-task.md`)의 `# 브랜치`가 현재 브랜치와 같으면 `# 변경 대상 파일` 밖 저장소 파일의 Edit·Write를 거부한다. `/edit`(인자 없이)에 가드 상태를 표시한다.
+- M6: 패널 `gate` 탭(`/panel gate`, 6번). Claude·agy·Codex 게이트 차단 로그 최근 50건과 동기화 테스트 결과를 보여 주고, 새 동기화 실패는 이벤트마다 한 번 toast로 알린다.
+
 ### Fixed
 - M2: Windows에서 "외부 브라우저로 열기"가 `cmd /c start`를 거쳐 URL의 `&`·`|`·`^`가 명령으로 실행될 수 있던 문제를 고쳤다. `rundll32 url.dll,FileProtocolHandler`로 열고, http(s)가 아닌 URL은 열지 않는다.
 - M8: `mmdc`를 `cmd /c`로 재시도할 때 Windows가 아니거나 경로에 `& | ^ % < > "`가 있으면 재시도하지 않는다.

@@ -7,10 +7,10 @@ Claude Code용 개인 생산성 mods 플러그인. 모듈 8개를 한 플러그�
 | i18n | – | Spinner·턴 종료 줄 등 내장 UI 일부를 한국어로 표시 |
 | integrations | `/issue` | 현재 브랜치 PR(GitHub, `gh`)·MR(GitLab, `glab`) 상태 폴링, Linear 이슈 검색·연결·상태 변경 |
 | composer | `/coach` | 프롬프트 위 band: PR/MR 배지, 다음 작업 후보, 모호한 요청 다듬기 |
-| panel | `/panel`, `/pin` | 작업 패널(핀·할 일·서브에이전트·사용량·인수인계), 사용량 경고(`/panel threshold`) |
+| panel | `/panel`, `/pin` | 작업 패널(핀·할 일·서브에이전트·사용량·인수인계·게이트), 사용량 경고(`/panel threshold`), 게이트 동기화 실패 알림 |
 | handoff | `/tk-handoff` | 컨텍스트 사용률 임계치(기본 75%)에서 인수인계 문서 자동 작성, 다음 프롬프트에 첨부 |
 | browser | `/browse` | Bash 출력의 localhost URL 감지, 스크린샷·콘솔 에러 수집 |
-| edit | `/edit` | 수정 대상(파일 행 범위·선택 영역·DOM 요소) 지정, 범위 밖 Edit·Write 차단 |
+| edit | `/edit` | 수정 대상(파일 행 범위·선택 영역·DOM 요소) 지정, 범위 밖 Edit·Write 차단, 파이프라인 계획서 범위 밖 수정 차단 |
 | diagram | – | 응답의 mermaid 블록을 SVG/PNG로 렌더 |
 
 ## 사용법
@@ -47,6 +47,26 @@ Claude Code용 개인 생산성 mods 플러그인. 모듈 8개를 한 플러그�
 - 두 값 모두 모든 프로젝트에 공통으로 저장된다(`g/m6/threshold`, `g/m7/threshold`).
 - 현재 사용량 경고 임계치는 `/panel usage` 탭에서도 볼 수 있다.
 - 인수인계가 사용량 경고보다 먼저 일어나게 하려면 `/tk-handoff` 임계치를 `/panel` 임계치보다 낮게 둔다.
+
+### ai-global-pipeline 연동
+
+[ai-global-pipeline](https://github.com/astromelon/ai-global-pipeline)(AI CLI 공용 유지보수 파이프라인)을 쓰는 경우에만
+동작한다. 쓰지 않으면 아무것도 하지 않는다.
+
+**계획서 범위 가드 (edit 모듈)**
+- 파이프라인 계획서(`git rev-parse --git-path ai-task.md`, 보통 `.git/ai-task.md`)의 `# 브랜치`가 현재 git 브랜치와 같으면
+  `# 변경 대상 파일`에 없는 저장소 파일의 Edit·Write를 거부한다. 거부 사유에 허용 목록과 고치는 방법이 나온다.
+- 목록 항목은 한 줄에 경로 하나(백틱 가능), 디렉터리는 `/`로 끝낸다. 저장소 밖 경로와 `.git/` 안(계획서 자체)은 막지 않는다.
+- 계획서 없음, `# 브랜치` 없음, 브랜치 불일치, git 실행 실패면 꺼진다. 상태는 `/edit`(인자 없이)의 마지막 줄에 나온다.
+- `/edit <path>:<start>-<end>` 범위와 함께 켜져 있으면 계획서 범위를 먼저 보고, 이어서 행 범위를 본다. `/mods edit off`로 둘 다 끈다.
+- 한계: Bash·NotebookEdit 경유 수정은 막지 못한다. Edit·Write마다 git을 2번(병렬) 실행한다.
+
+**게이트 탭 (panel 모듈)**
+- `/panel gate`(또는 패널 6번 탭)에서 Claude·agy·Codex 게이트 훅 로그(`~/.claude/hooks/node4-approval-gate.log` 등, 회전 파일
+  `.1` 포함)의 최근 50건과 최근 동기화 결과(`~/.ai-gate/.sync-events.json`)를 보여 준다. 탭을 열 때만 읽는다.
+- 답변이 끝날 때마다 동기화 파일의 수정 시각만 확인하고, 새 동기화 실패가 있으면 이벤트마다 한 번 toast로 알린다
+  (마지막으로 알린 번호는 `g/m6/syncSeen`, `/clear` 뒤에도 다시 알리지 않는다).
+- 파일은 있는데 읽지 못하면 탭에 "읽기 실패: <출처>"로 표시한다. 명령 원문은 화면에만 표시하고 store·프롬프트에 넣지 않는다.
 
 ## 설치
 

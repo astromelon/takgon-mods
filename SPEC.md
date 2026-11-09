@@ -156,6 +156,10 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
   - Agents: `classic.SubagentStart`/`classic.SubagentStop`(`agent_id`로 짝지음)으로 실행 내역과 상태를 기록한다. 최근 50건.
   - Usage: `$.session.usage()`의 `context.percent`, `rateLimits`, `cost`를 표시한다. 임계치(기본 80%) 판정은 `session.measure`에서 하고 세션당 임계치별 1회만 toast.
   - Handoff: M7의 최신 인수인계 요약을 표시한다.
+  - Gate **[추가]**: ai-global-pipeline 게이트 훅 로그(Claude·agy·Codex JSONL, `.1` 회전 파일 포함) 최근 50건과 동기화 이벤트
+    (`~/.ai-gate/.sync-events.json`) 최근 5건. `/panel gate`·탭 버튼에서만 읽는다(render는 state 읽기만).
+    `session.measure`(M6가 가진 matcher 없는 등록)에서 동기화 파일 `$.fs.stat` mtime이 바뀌었을 때만 다시 읽고,
+    `sync_test_hook.py`와 같은 규칙(실패 뒤 통과로 풀린 실패는 제외)으로 새 실패를 이벤트당 1회 toast. 마지막 알린 id는 `g/m6/syncSeen`.
 
 ## M7. Auto-handoff
 - 트리거: `session.measure`에서 `context.percent`가 임계치(기본 75%)를 넘을 때 **세션당 1회**, 또는 `/handoff` 수동 실행.
@@ -181,6 +185,10 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
   - 범위와 "나머지 영역 변경 금지" 지시를 `prompt.submit` `context`로 주입한다.
   - **강제 [추가]**: 선택이 활성인 동안 `tool.call`(Edit/Write) 훅에서 해당 파일의 범위 밖 변경을 `{ deny }`한다
     (지시만으로는 보장되지 않음). 가드 훅이므로 `.catch`로 실패 시 deny.
+- 파이프라인 계획서 범위 **[추가]**: 같은 Edit/Write 훅 맨 앞에서 `git rev-parse --show-toplevel --git-dir --git-path ai-task.md`와
+  `git branch --show-current`(병렬)로 계획서를 찾고, `# 브랜치`가 현재 브랜치와 같으면 `# 변경 대상 파일` 밖 저장소 파일을 `{ deny }`한다.
+  새 훅을 등록하지 않는 이유는 `.catch` 응답이 같은 플러그인 뒤쪽 훅을 건너뛰게 해 순서를 보장할 수 없어서다.
+  git 실행 실패·계획서 없음·브랜치 불일치는 비활성(허용), 그 밖의 예외는 기존 `.catch`대로 deny. 저장소 밖과 git 디렉터리 안은 판정하지 않는다.
 - DOM: 클릭 픽은 불가. `/edit dom <selector>`로 M2 headless 스크립트에서 selector, computed style, 요소 스크린샷을 수집해 첨부한다.
 
 ## M8. Diagram Render

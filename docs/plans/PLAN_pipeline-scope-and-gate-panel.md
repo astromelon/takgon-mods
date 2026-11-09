@@ -166,68 +166,68 @@
 ### Phase 4: 게이트 로그·동기화 이벤트 파싱 순수 로직 (M6)
 **Goal**: 로그 텍스트 → 표시용 레코드, 이벤트 JSON → 새 실패 선별
 **Estimated Time**: 1.5h
-**Status**: ⏳ Pending
+**Status**: ✅ Complete
 
 **🔴 RED** (`tests/m6-panel.test.tsx`)
-- [ ] **Test 4.1** `parseGateLog(text, tool)` → `GateRecord[]` `{ ts, tool, decision, hits, command, cwd }`
+- [x] **Test 4.1** `parseGateLog(text, tool)` → `GateRecord[]` `{ ts, tool, decision, hits, command, cwd }`
   - 깨진 줄·`ts` 없는 줄 건너뜀, Codex `logged-only (...)` → `log`, 명령은 한 줄로 접고 길이 제한
-- [ ] **Test 4.2** `mergeGateRecords(lists, limit)` → 시각 내림차순 최근 N건(`.1` 회전 파일 + 현재 파일 합침)
-- [ ] **Test 4.3** `parseSyncEvents(text)` → `{ lastId, events }`. 형식 오류면 빈 결과
-- [ ] **Test 4.4** `syncFailuresToNotify(events, seenId)`
+- [x] **Test 4.2** `mergeGateRecords(lists, limit)` → 시각 내림차순 최근 N건(`.1` 회전 파일 + 현재 파일 합침)
+- [x] **Test 4.3** `parseSyncEvents(text)` → `{ lastId, events }`. 형식 오류면 빈 결과
+- [x] **Test 4.4** `syncFailuresToNotify(events, seenId)`
   - `seenId` 없음(첫 실행): 최신이 실패면 그 1건, 아니면 없음
   - `seenId` 있음: 이후 이벤트 중 최신이 실패면 그 1건(이미 통과로 풀린 실패는 알리지 않음)
 
 **🟢 GREEN**
-- [ ] **Task 4.5** `src/m6-panel/logic.ts`에 구현, 공용 타입은 `types/index.d.ts`
+- [x] **Task 4.5** `src/m6-panel/logic.ts`에 구현, 공용 타입은 `types/index.d.ts`
 
 #### Quality Gate ✋
-- [ ] RED → GREEN, `claude plugin test .`, `tsc` 통과
+- [x] RED → GREEN, `claude plugin test .`, `tsc` 통과
 
 ---
 
 ### Phase 5: `gate` 탭과 동기화 실패 toast (M6)
 **Goal**: 패널에서 보이고, 새 실패를 알린다
 **Estimated Time**: 2.5h
-**Status**: ⏳ Pending
+**Status**: ✅ Complete
 **Depends on**: Phase 4
 
 **🔴 RED** (`fs.read`·`fs.stat`·`store`·`env.get` 목)
-- [ ] **Test 5.1** `/panel gate` → `panelTab`이 `gate`, 상태에 차단 레코드·동기화 요약이 채워진다
-- [ ] **Test 5.2** 로그 파일 없음 → "기록 없음", 예외로 패널이 안 열리는 일 없음
-- [ ] **Test 5.3** `session.measure`: 이벤트 파일 mtime 같으면 `fs.read` 호출 안 함, 바뀌었고 새 실패면 toast 1회 + `g/m6/syncSeen` 갱신
-- [ ] **Test 5.4** 같은 실패 이벤트로 두 번째 measure → toast 없음. `/clear` 뒤(state 비움)에도 store 기준으로 없음
-- [ ] **Test 5.5** 모듈 off면 읽지도 알리지도 않음
+- [x] **Test 5.1** `/panel gate` → `panelTab`이 `gate`, 상태에 차단 레코드·동기화 요약이 채워진다
+- [x] **Test 5.2** 로그 파일 없음 → "기록 없음", 예외로 패널이 안 열리는 일 없음
+- [x] **Test 5.3** `session.measure`: 이벤트 파일 mtime 같으면 `fs.read` 호출 안 함, 바뀌었고 새 실패면 toast 1회 + `g/m6/syncSeen` 갱신
+- [x] **Test 5.4** 같은 실패 이벤트로 두 번째 measure → toast 없음. `/clear` 뒤(state 비움)에도 store 기준으로 없음
+- [x] **Test 5.5** 모듈 off면 읽지도 알리지도 않음
 
 **🟢 GREEN**
-- [ ] **Task 5.6** `types/index.d.ts`: `PanelTab`에 `'gate'`, `PluginState`에 `gate` 상태(레코드·이벤트 요약·mtime)
-- [ ] **Task 5.7** `logic.ts` `TABS`, `parsePanelArgs`, `argumentHint`에 `gate` 추가(핫키 6)
-- [ ] **Task 5.8** `index.tsx`: `refreshGate($)`(같은 파일 최상위), 명령·탭 버튼·`session.measure`에서 호출. render는 state만 읽는다
-- [ ] **Task 5.9** `messages.ts` ko/en: 탭 이름, 빈 상태, 레코드 줄, 동기화 요약, toast 문구(실패 요약 첫 줄 + `/panel gate` 안내)
+- [x] **Task 5.6** `types/index.d.ts`: `PanelTab`에 `'gate'`, `PluginState`에 `gate` 상태(레코드·이벤트 요약·mtime)
+- [x] **Task 5.7** `logic.ts` `TABS`, `parsePanelArgs`, `argumentHint`에 `gate` 추가(핫키 6)
+- [x] **Task 5.8** `index.tsx`: `refreshGate($)`(같은 파일 최상위), 명령·탭 버튼·`session.measure`에서 호출. render는 state만 읽는다
+- [x] **Task 5.9** `messages.ts` ko/en: 탭 이름, 빈 상태, 레코드 줄, 동기화 요약, toast 문구(실패 요약 첫 줄 + `/panel gate` 안내)
 
 **🔵 REFACTOR**
-- [ ] **Task 5.10** `session.measure` 1회당 추가 비용 확인(변경 없을 때 `fs.stat` 1회만)
+- [x] **Task 5.10** `session.measure` 1회당 추가 비용 확인(변경 없을 때 `fs.stat` 1회만)
 
 #### Quality Gate ✋
-- [ ] RED → GREEN, 기존 m6 테스트 무변경 통과
-- [ ] `claude plugin validate .`, `claude plugin test .`, `tsc` 통과
+- [x] RED → GREEN, 기존 m6 테스트 무변경 통과
+- [x] `claude plugin validate .`, `claude plugin test .`, `tsc` 통과
 
 ---
 
 ### Phase 6: 문서와 실제 세션 확인
 **Goal**: 사용자에게 보이는 변경을 문서화하고 실제 세션에서 확인
 **Estimated Time**: 1h
-**Status**: ⏳ Pending
+**Status**: ✅ Complete (실세션 수정 거부는 미실행)
 **Depends on**: Phase 2, 3, 5
 
-- [ ] **Task 6.1** README 모듈 표(edit·panel 설명), SPEC.md M3·M6 절, CHANGELOG `[Unreleased]`
-- [ ] **Task 6.2** `node tools/ci-local.mjs` 통과
+- [x] **Task 6.1** README 모듈 표(edit·panel 설명), SPEC.md M3·M6 절, CHANGELOG `[Unreleased]`
+- [x] **Task 6.2** `node tools/ci-local.mjs` 통과
 
 **Manual Test Checklist** (`claude --plugin-dir .`)
-- [ ] 계획서 `# 브랜치` = 현재 브랜치, 목록 밖 파일 Edit → 거부 사유 확인
-- [ ] 브랜치를 바꾸면 같은 Edit이 허용된다
-- [ ] `/edit` 출력에 활성 상태 표시
-- [ ] `/panel gate`에 실제 `~/.claude/hooks/node4-approval-gate.log` 최근 차단이 보인다
-- [ ] `~/.ai-gate` 감시 파일을 일부러 어긋나게 고쳐 동기화 실패 → 다음 턴 toast 1회 → 되돌린 뒤 통과 표시
+- [ ] 계획서 `# 브랜치` = 현재 브랜치, 목록 밖 파일 Edit → 거부 사유 확인 (미실행: 모델 호출 필요, 통합 테스트로 대체)
+- [ ] 브랜치를 바꾸면 같은 Edit이 허용된다 (미실행, 통합 테스트로 대체)
+- [x] `/edit` 출력에 활성 상태 표시
+- [x] `/panel gate`에 실제 `~/.claude/hooks/node4-approval-gate.log` 최근 차단이 보인다
+- [ ] (미실행) `~/.ai-gate` 감시 파일을 일부러 어긋나게 고쳐 동기화 실패 → 다음 턴 toast 1회 → 되돌린 뒤 통과 표시
 
 ---
 
@@ -261,9 +261,9 @@
 | 1. 범위 판정 로직 | 1.5h | - | ✅ |
 | 2. 범위 가드 연결 | 2.5h | - | ✅ |
 | 3. 파이프라인 `# 브랜치` | 0.5h | - | ✅ |
-| 4. 로그·이벤트 파싱 | 1.5h | - | ⏳ |
-| 5. gate 탭·toast | 2.5h | - | ⏳ |
-| 6. 문서·실세션 | 1h | - | ⏳ |
+| 4. 로그·이벤트 파싱 | 1.5h | - | ✅ |
+| 5. gate 탭·toast | 2.5h | - | ✅ |
+| 6. 문서·실세션 | 1h | - | ✅ |
 | **Total** | **9.5h** | - | |
 
 **검증 명령 (모든 페이즈 공통, takgon-mods 루트)**
@@ -282,6 +282,9 @@ node tools/ci-local.mjs        # Phase 6
 - Phase 1(2026-11-10): agy 구현 → Claude 리뷰. RED는 `judgeScope` export 없음으로 실패 확인, GREEN 167 pass. `## 제목`은 섹션 경계가 아니라 내용 줄로 취급(테스트로 고정).
 - Phase 2(2026-11-10): agy 구현(RED 3 fail → GREEN 178 pass) → Claude 리뷰에서 git 2회를 `Promise.all` 병렬로 수정. 실측(이 PC, 20회 중앙값): `git rev-parse ...` 54ms, `git branch --show-current` 68ms → 순차 약 120ms였고 병렬화 후 Edit당 추가 지연은 실세션에서 미측정. 캐시는 아직 넣지 않음.
 - Phase 3(2026-11-10): 마스터 계획서 형식에 `# 브랜치` 추가, `# 변경 대상 파일`은 "한 줄에 경로 하나, 백틱, 디렉터리는 `/`로 끝냄"으로 명시(파서와 맞춤). 사본 4곳 자동 갱신, 동기화 테스트 29개 통과, 공개 저장소 `docs/plan-branch-field` 브랜치에 내보냄.
+- Phase 4(2026-11-10): agy 구현(RED: export 없음으로 1 fail → GREEN 182 pass) → Claude 리뷰 결함 없음. 타입 `GateTool`·`GateRecord`·`SyncEvent` 추가(`PanelTab`은 Phase 5에서). 동기화 요약은 실패면 `reason`, 통과면 `notice`의 첫 줄(200자). 실제 로그 파일로는 아직 돌려 보지 않음(Phase 6).
+- Phase 5(2026-11-10): agy 구현(RED 7 fail → GREEN 191 pass) → Claude 리뷰 결함 없음. 세션 루트 밖 `$.fs.read` 가능 여부는 사전 확인 대신 "파일 있음 + 읽기 실패"를 `unreadable`로 표시하게 하고 Phase 6 실세션에서 확인하기로 변경. 게이트 기록은 `/panel gate`·탭 버튼에서만 읽고(최대 6파일), 턴마다는 동기화 파일 `fs.stat` 1회만. 명령 원문은 state·화면에만 두고 store·context에 넣지 않음.
+- Phase 6(2026-11-10): `claude --plugin-dir .`(Claude Code 2.1.321) 실세션에서 `/edit` 마지막 줄 "계획서 범위 가드: 켜짐 (브랜치 feat/pipeline-scope-gate-panel, 대상 파일 5개)", `/panel gate`에 실제 claude·agy 로그와 동기화 #46 표시 확인 → 세션 루트 밖 `$.fs.read` 가능. `ci-local.mjs`는 CI 단계 전부 통과, `--tsc`만 m4·m5 테스트 파일(이번 변경 밖)에서 `isCollapsed` 누락 등 실패: 실세션이 타입 파일을 2.1.321 기준으로 다시 만들어서이며 CI 고정 버전 2.1.296과 다름.
 - git·계획서 읽기 실패(목 미등록 포함)는 모두 비활성(허용)으로 처리. 세션 루트를 cwd로 쓰므로 다른 저장소 파일은 `outside-repo`로 허용된다.
 
 ### 미확인 항목 (계획 시점)
@@ -299,6 +302,6 @@ node tools/ci-local.mjs        # Phase 6
 
 ---
 
-**Plan Status**: 🔄 In Progress (Phase 1~3 완료)
-**Next Action**: Phase 4 RED 테스트(게이트 로그·동기화 이벤트 파싱) 작성
+**Plan Status**: ✅ Phase 1~6 완료 (반영 대기)
+**Next Action**: Node 4 승인 후 커밋·`main` 반영. 별건: 엔진 2.1.321 타입에 맞춘 m4·m5 테스트 보정
 **Blocked By**: None
