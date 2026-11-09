@@ -122,6 +122,7 @@ const TURN = { answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1', reas
 const RUN = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 const BAND = {
   hasSurvey: false,
+  isCollapsed: false,
   isWorking: false,
   maxRows: 10,
   bodyColumns: 60,

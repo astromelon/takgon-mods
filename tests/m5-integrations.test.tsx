@@ -170,6 +170,7 @@ describe('GitLab MR 폴링', () => {
       component: 'AbovePrompt',
       props: {
         hasSurvey: false,
+        isCollapsed: false,
         isWorking: false,
         maxRows: 10,
         bodyColumns: 100,
@@ -308,7 +309,8 @@ type Gql = { query: string; variables: Record<string, string> }
 /** Linear API 자리. 요청 본문(쿼리 종류)으로 응답을 고른다. */
 const linear = (on: On, requests: Gql[] = []): void => {
   on('http.fetch', ($, e) => {
-    const body = JSON.parse(e.init?.body ?? '{}') as Gql
+    const raw = e.init?.body
+    const body = JSON.parse(typeof raw === 'string' ? raw : '{}') as Gql
     requests.push(body)
     const reply = (data: unknown) => ({
       value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ data }) },
@@ -431,7 +433,7 @@ describe('GitHub PR 폴링', () => {
         plugin: 'takgon-mods',
         surface: 'terminal',
         component: 'AbovePrompt',
-        props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 9 }, view: {} },
+        props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 9 }, view: {} },
       })
 
     await $.session.start(START)
