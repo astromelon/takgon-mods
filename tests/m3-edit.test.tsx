@@ -4,7 +4,9 @@ import type { Engine } from 'claude-code/testing'
 
 import {
   judgeEdit,
+  judgeScope,
   parseEditArgs,
+  parsePlanScope,
   resolvePath,
   sliceLines,
 } from '../src/m3-edit/logic'
@@ -327,3 +329,422 @@ describe('/edit dom', () => {
     expect(seen.at(-1) ?? []).toHaveLength(0)
   })
 })
+
+describe('계획서 범위 파싱(순수)', () => {
+  test('기본 섹션에서 브랜치와 변경 대상 파일 목록을 추출한다', () => {
+    const plan = [
+      '# 작업',
+      'x',
+      '',
+      '# 브랜치',
+      'feat/a',
+      '',
+      '# 변경 대상 파일',
+      '- `src/a.ts`',
+      '- src/b.ts (신규)',
+      '* `tests/c.test.tsx` — 설명',
+      '1. docs/d.md',
+      '',
+      '# 구현 지시',
+      '- `not/this.ts`',
+      '',
+    ].join('\n')
+    expect(parsePlanScope(plan)).toEqual({
+      branch: 'feat/a',
+      files: ['src/a.ts', 'src/b.ts', 'tests/c.test.tsx', 'docs/d.md'],
+    })
+    expect(parsePlanScope(plan.replace(/\n/g, '\r\n'))).toEqual({
+      branch: 'feat/a',
+      files: ['src/a.ts', 'src/b.ts', 'tests/c.test.tsx', 'docs/d.md'],
+    })
+  })
+
+  test('브랜치 목록 기호·백틱, 빈 섹션, 구분자 정규화, 중복 제거', () => {
+    expect(parsePlanScope('# 브랜치\n- `feat/b`\n# 변경 대상 파일\n- src\\x\\y.ts\n- `src/x/y.ts`\n- a.ts\n')).toEqual({
+      branch: 'feat/b',
+      files: ['src/x/y.ts', 'a.ts'],
+    })
+    expect(parsePlanScope('# 작업\nx\n')).toEqual({ branch: undefined, files: [] })
+    expect(parsePlanScope('# 브랜치\n\n# 변경 대상 파일\n\n')).toEqual({ branch: undefined, files: [] })
+  })
+
+  test('코드 펜스 안 제목·하위 제목(##)은 무시하고 중복 제목은 첫 번째만 쓴다', () => {
+    const fenced = [
+      '# 작업',
+      '```',
+      '# 브랜치',
+      'fake/branch',
+      '```',
+      '# 변경 대상 파일',
+      '- a.ts',
+      '```',
+      '# not heading',
+      '- ignored.ts',
+      '```',
+      '## 브랜치',
+      '- b.ts',
+      '# 브랜치',
+      'feat/real',
+      '# 브랜치',
+      'feat/second',
+      '# 변경 대상 파일',
+      '- second.ts',
+    ].join('\n')
+    expect(parsePlanScope(fenced)).toEqual({
+      branch: 'feat/real',
+      files: ['a.ts', 'b.ts'],
+    })
+  })
+})
+
+describe('계획서 범위 판정(순수)', () => {
+  const base = { top: 'C:/proj', gitDir: 'C:/proj/.git', files: ['src/a.ts'] }
+
+  test('목록 일치(절대·대소문자·구분자·상대 경로)와 목록 밖 거부', () => {
+    expect(judgeScope({ ...base, filePath: 'C:/proj/src/a.ts' })).toEqual({ isAllowed: true, reason: 'listed' })
+    expect(judgeScope({ ...base, filePath: 'C:\\proj\\SRC\\A.ts' })).toEqual({ isAllowed: true, reason: 'listed' })
+    expect(judgeScope({ ...base, filePath: 'src/a.ts' })).toEqual({ isAllowed: true, reason: 'listed' })
+    expect(judgeScope({ ...base, files: ['C:/proj/src/a.ts'], filePath: 'src/a.ts' })).toEqual({
+      isAllowed: true,
+      reason: 'listed',
+    })
+    expect(judgeScope({ ...base, filePath: 'C:/proj/src/b.ts' })).toEqual({ isAllowed: false })
+    expect(judgeScope({ ...base, files: [], filePath: 'C:/proj/src/a.ts' })).toEqual({ isAllowed: false })
+  })
+
+  test('저장소 밖·형제 폴더와 .git·워크트리 gitDir 허용', () => {
+    expect(judgeScope({ ...base, filePath: 'C:/other/x.ts' })).toEqual({ isAllowed: true, reason: 'outside-repo' })
+    expect(judgeScope({ ...base, filePath: 'C:/projector/x.ts' })).toEqual({ isAllowed: true, reason: 'outside-repo' })
+    expect(judgeScope({ ...base, filePath: 'C:/proj/.git/ai-task.md' })).toEqual({
+      isAllowed: true,
+      reason: 'git-dir',
+    })
+    expect(
+      judgeScope({
+        top: 'C:/w',
+        gitDir: 'C:/main/.git/worktrees/w',
+        files: ['src/a.ts'],
+        filePath: 'C:/main/.git/worktrees/w/ai-task.md',
+      }),
+    ).toEqual({ isAllowed: true, reason: 'git-dir' })
+  })
+
+  test('디렉터리 항목(/)은 하위만 허용하고 접두어만 같은 형제 폴더는 거부한다', () => {
+    const dirScope = { top: 'C:/proj', gitDir: 'C:/proj/.git', files: ['src/m3-edit/'] }
+    expect(judgeScope({ ...dirScope, filePath: 'C:/proj/src/m3-edit/logic.ts' })).toEqual({
+      isAllowed: true,
+      reason: 'listed',
+    })
+    expect(judgeScope({ ...dirScope, filePath: 'C:/proj/src/m3-editor/x.ts' })).toEqual({ isAllowed: false })
+  })
+})
+
+const PLAN = '# 브랜치\nfeat/a\n\n# 변경 대상 파일\n- `src/a.ts`\n- `tests/`\n'
+
+const gitEngine = (
+  on: On,
+  opts: { branch?: string; plan?: string; exitCode?: number } = {},
+): (readonly string[])[] => {
+  const { branch = 'feat/a', plan, exitCode = 0 } = opts
+  const argvs: (readonly string[])[] = []
+  on('process.run', ($, e) => {
+    argvs.push(e.argv)
+    let stdout = ''
+    if (e.argv.join(' ') === 'git rev-parse --show-toplevel --git-dir --git-path ai-task.md') {
+      stdout = 'C:/proj\n.git\n.git/ai-task.md\n'
+    } else if (e.argv.join(' ') === 'git branch --show-current') {
+      stdout = `${branch}\n`
+    }
+    return {
+      value: {
+        exitCode,
+        stdout,
+        stderr: '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    }
+  })
+  const files: Record<string, string> = {
+    'C:/proj/src/a.ts': SOURCE,
+    'C:/proj/src/b.ts': SOURCE,
+    'C:/proj/tests/x.test.ts': SOURCE,
+  }
+  if (plan !== undefined) {
+    files['C:/proj/.git/ai-task.md'] = plan
+  }
+  engine(on, files)
+  return argvs
+}
+
+const captureTools = (on: On): string[] => {
+  const ran: string[] = []
+  on('tool.call', { tool: 'Edit' }, ($, e) => {
+    ran.push(e.file_path)
+    return { result: { filePath: e.file_path } as never }
+  })
+  on('tool.call', { tool: 'Write' }, ($, e) => {
+    ran.push(`write:${e.file_path}`)
+    return { result: { filePath: e.file_path } as never }
+  })
+  return ran
+}
+
+describe('계획서 범위 가드', () => {
+  test('브랜치가 일치하면 변경 대상 파일 밖 Edit·Write를 거부한다', async ($, on) => {
+    const ran = captureTools(on)
+    const argvs = gitEngine(on, { branch: 'feat/a', plan: PLAN })
+    mock.store(on)
+    await $.session.start(START)
+
+    const editDenied = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/b.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    expect(editDenied.deny).toBeDefined()
+    expect(editDenied.deny).toContain('src/b.ts')
+    expect(editDenied.deny).toContain('src/a.ts')
+    expect(editDenied.deny).toContain('변경 대상 파일')
+
+    const writeDenied = await $.tool.call({
+      tool: 'Write',
+      file_path: 'C:/proj/src/b.ts',
+      content: 'all',
+    })
+    expect(writeDenied.deny).toBeDefined()
+    expect(writeDenied.deny).toContain('src/b.ts')
+    expect(writeDenied.deny).toContain('src/a.ts')
+    expect(writeDenied.deny).toContain('변경 대상 파일')
+
+    expect(ran).toEqual([])
+    expect(argvs.length).toBeGreaterThan(0)
+  })
+
+  test('브랜치가 일치하고 변경 대상 파일·디렉터리 안이면 Edit·Write를 허용한다', async ($, on) => {
+    const ran = captureTools(on)
+    gitEngine(on, { branch: 'feat/a', plan: PLAN })
+    mock.store(on)
+    await $.session.start(START)
+
+    const editA = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/a.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    const editTest = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/tests/x.test.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    const writeA = await $.tool.call({
+      tool: 'Write',
+      file_path: 'C:/proj/src/a.ts',
+      content: 'all',
+    })
+    const writeTest = await $.tool.call({
+      tool: 'Write',
+      file_path: 'C:/proj/tests/x.test.ts',
+      content: 'all',
+    })
+
+    expect(editA.deny).toBeUndefined()
+    expect(editTest.deny).toBeUndefined()
+    expect(writeA.deny).toBeUndefined()
+    expect(writeTest.deny).toBeUndefined()
+    expect(ran).toEqual([
+      'C:/proj/src/a.ts',
+      'C:/proj/tests/x.test.ts',
+      'write:C:/proj/src/a.ts',
+      'write:C:/proj/tests/x.test.ts',
+    ])
+  })
+
+  test('브랜치 불일치면 비활성으로 통과한다', async ($, on) => {
+    const ran = captureTools(on)
+    gitEngine(on, { branch: 'main', plan: PLAN })
+    mock.store(on)
+    await $.session.start(START)
+
+    const res = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/b.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    expect(res.deny).toBeUndefined()
+    expect(ran).toEqual(['C:/proj/src/b.ts'])
+  })
+
+  test('계획서 파일이 없으면 비활성으로 통과한다', async ($, on) => {
+    const ran = captureTools(on)
+    gitEngine(on, { branch: 'feat/a' })
+    mock.store(on)
+    await $.session.start(START)
+
+    const res = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/b.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    expect(res.deny).toBeUndefined()
+    expect(ran).toEqual(['C:/proj/src/b.ts'])
+  })
+
+  test('계획서에 # 브랜치가 없으면 비활성으로 통과한다', async ($, on) => {
+    const ran = captureTools(on)
+    gitEngine(on, { branch: 'feat/a', plan: '# 작업\nx\n\n# 변경 대상 파일\n- `src/a.ts`\n' })
+    mock.store(on)
+    await $.session.start(START)
+
+    const res = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/b.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    expect(res.deny).toBeUndefined()
+    expect(ran).toEqual(['C:/proj/src/b.ts'])
+  })
+
+  test('git 종료 코드가 0이 아니면 비활성으로 통과한다', async ($, on) => {
+    const ran = captureTools(on)
+    gitEngine(on, { branch: 'feat/a', plan: PLAN, exitCode: 128 })
+    mock.store(on)
+    await $.session.start(START)
+
+    const res = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/b.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    expect(res.deny).toBeUndefined()
+    expect(ran).toEqual(['C:/proj/src/b.ts'])
+  })
+
+  test('process.run 목이 없어도 비활성으로 통과한다', async ($, on) => {
+    const ran = captureTools(on)
+    engine(on, { 'C:/proj/src/b.ts': SOURCE })
+    mock.store(on)
+    await $.session.start(START)
+
+    const res = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/b.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    expect(res.deny).toBeUndefined()
+    expect(ran).toEqual(['C:/proj/src/b.ts'])
+  })
+
+  test('저장소 밖 경로와 .git/ai-task.md 자체는 활성 상태에서도 통과한다', async ($, on) => {
+    const ran = captureTools(on)
+    gitEngine(on, { branch: 'feat/a', plan: PLAN })
+    mock.store(on)
+    await $.session.start(START)
+
+    const outsideRepo = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/other/x.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    const planFile = await $.tool.call({
+      tool: 'Write',
+      file_path: 'C:/proj/.git/ai-task.md',
+      content: PLAN,
+    })
+
+    expect(outsideRepo.deny).toBeUndefined()
+    expect(planFile.deny).toBeUndefined()
+    expect(ran).toEqual(['C:/other/x.ts', 'write:C:/proj/.git/ai-task.md'])
+  })
+
+  test('/edit 행 범위와 동시 활성이면 계획서 범위를 먼저 판정하고 이어서 행 범위를 판정한다', async ($, on) => {
+    captureTools(on)
+    gitEngine(on, { branch: 'feat/a', plan: PLAN })
+    mock.store(on)
+    await $.session.start(START)
+    await edit($, 'src/a.ts:2-3')
+
+    const unlisted = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/b.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    expect(unlisted.deny).toContain('변경 대상 파일')
+    expect(unlisted.deny).not.toContain('선택 영역 수정 중')
+
+    const outOfRange = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/a.ts',
+      old_string: 'line5',
+      new_string: 'x',
+    })
+    expect(outOfRange.deny).toContain('5~5')
+  })
+
+  test('/mods edit off 뒤에는 계획서 밖 Edit도 통과한다', async ($, on) => {
+    const ran = captureTools(on)
+    gitEngine(on, { branch: 'feat/a', plan: PLAN })
+    mock.store(on)
+    await $.session.start(START)
+
+    await $.command.run({
+      command: 'mods',
+      args: 'edit off',
+      origin: { kind: 'composer' },
+      presentation: { isFullscreen: true, columns: 120 },
+    })
+
+    const res = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/b.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    expect(res.deny).toBeUndefined()
+    expect(ran).toEqual(['C:/proj/src/b.ts'])
+  })
+
+  test('/edit 인자 없음 출력에 계획서 범위 활성 여부·브랜치·파일 수를 표시한다', async ($, on) => {
+    let currentBranch = 'feat/a'
+    on('process.run', ($, e) => {
+      let stdout = ''
+      if (e.argv.join(' ') === 'git rev-parse --show-toplevel --git-dir --git-path ai-task.md') {
+        stdout = 'C:/proj\n.git\n.git/ai-task.md\n'
+      } else if (e.argv.join(' ') === 'git branch --show-current') {
+        stdout = `${currentBranch}\n`
+      }
+      return {
+        value: {
+          exitCode: 0,
+          stdout,
+          stderr: '',
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      }
+    })
+    engine(on, { 'C:/proj/src/a.ts': SOURCE, 'C:/proj/.git/ai-task.md': PLAN })
+    mock.store(on)
+    await $.session.start(START)
+
+    const activeText = (await edit($, '')).text ?? ''
+    expect(activeText).toContain('feat/a')
+    expect(activeText).toContain('2')
+
+    currentBranch = 'main'
+    const inactiveText = (await edit($, '')).text ?? ''
+    expect(inactiveText).toContain('꺼짐')
+  })
+})
+
+

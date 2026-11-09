@@ -38,6 +38,12 @@ const ko = {
     '선택 영역 수정 중: old_string을 {path} 에서 찾을 수 없어 범위를 확인할 수 없습니다. 대상 범위 {start}~{end}행 안의 텍스트를 쓰세요.',
   'edit.deny.unreadable': '선택 영역 수정 중: {path} 을(를) 읽을 수 없어 범위를 확인할 수 없습니다.',
   'edit.deny.guardFailed': '선택 영역 수정 가드가 실패해 변경을 거부합니다. /edit clear 후 다시 시도하세요.',
+  'edit.deny.plan':
+    '계획서 범위 밖 수정입니다: {path}\n' +
+    '계획서 {plan} (브랜치 {branch}) 의 # 변경 대상 파일: {files}\n' +
+    '이 파일을 고쳐야 하면 계획서의 # 변경 대상 파일에 추가한 뒤 다시 시도하세요.',
+  'edit.plan.active': '계획서 범위 가드: 켜짐 (브랜치 {branch}, 대상 파일 {count}개)',
+  'edit.plan.inactive': '계획서 범위 가드: 꺼짐',
 } as const
 
 /** M3 메시지 키. */
@@ -80,6 +86,12 @@ const en: Record<EditMessageKey, string> = {
     'Select-to-edit active: old_string was not found in {path}, so the range cannot be checked. Use text within lines {start}-{end}.',
   'edit.deny.unreadable': 'Select-to-edit active: cannot read {path} to check the range.',
   'edit.deny.guardFailed': 'The select-to-edit guard failed, so the change is denied. Run /edit clear and retry.',
+  'edit.deny.plan':
+    'Edit is outside the plan scope: {path}\n' +
+    '# 변경 대상 파일 in {plan} (branch {branch}): {files}\n' +
+    'If this file must be changed, add it to # 변경 대상 파일 in the plan and retry.',
+  'edit.plan.active': 'Plan scope guard: on (branch {branch}, {count} target files)',
+  'edit.plan.inactive': 'Plan scope guard: off',
 }
 
 /** M3 번역기. */

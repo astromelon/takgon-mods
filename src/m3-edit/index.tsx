@@ -11,8 +11,10 @@ import {
   describeForModel,
   isSamePath,
   judgeEdit,
+  judgeScope,
   lineDelta,
   parseEditArgs,
+  parsePlanScope,
   resolvePath,
   sliceLines,
   summarizeTarget,
@@ -61,7 +63,89 @@ const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<v
 /** headless 스크립트 실행 제한 시간. M2(45초)보다 길다: 선택자 조회와 요소 스크린샷이 한 번 더 붙는다. */
 const HEADLESS_TIMEOUT_MS = 90_000
 
+const GIT_TIMEOUT_MS = 5_000
+const REV_PARSE = ['git', 'rev-parse', '--show-toplevel', '--git-dir', '--git-path', 'ai-task.md'] as const
+const BRANCH = ['git', 'branch', '--show-current'] as const
+const PLAN_FILES_MAX = 20
+
 const isOn = async ($: EngineInterface): Promise<boolean> => (await read($, modulesAtom)).edit
+
+/** 파이프라인 계획서(`.git/ai-task.md`)의 `# 브랜치`가 현재 git 브랜치와 같을 때만 활성 범위를 돌려준다. */
+const planScope = async (
+  $: EngineInterface,
+): Promise<{ top: string; gitDir: string; planPath: string; branch: string; files: string[] } | undefined> => {
+  if (!(await isOn($))) {
+    return undefined
+  }
+  const root = await $.session.root()
+  let revStdout = ''
+  let branchStdout = ''
+  try {
+    // Edit·Write마다 실행되므로 두 git 호출을 병렬로 띄운다(실측: 순차 약 120ms, 각각 중앙값 54·68ms).
+    const [rev, cur] = await Promise.all([
+      $.process.run(REV_PARSE, { cwd: root, timeoutMs: GIT_TIMEOUT_MS }),
+      $.process.run(BRANCH, { cwd: root, timeoutMs: GIT_TIMEOUT_MS }),
+    ])
+    if (rev.exitCode !== 0 || cur.exitCode !== 0) {
+      return undefined
+    }
+    revStdout = rev.stdout
+    branchStdout = cur.stdout
+  } catch {
+    return undefined
+  }
+  const lines = revStdout.replace(/\r\n/g, '\n').split('\n').map(line => line.trim())
+  const rawTop = lines[0] ?? ''
+  const rawGitDir = lines[1] ?? ''
+  const rawPlanPath = lines[2] ?? ''
+  const currentBranch = branchStdout.trim()
+  if (rawTop === '' || rawGitDir === '' || rawPlanPath === '' || currentBranch === '') {
+    return undefined
+  }
+  const top = resolvePath(root, rawTop)
+  const gitDir = resolvePath(root, rawGitDir)
+  const planPath = resolvePath(root, rawPlanPath)
+  let planText: string
+  try {
+    planText = await $.fs.read(planPath)
+  } catch {
+    return undefined
+  }
+  const parsed = parsePlanScope(planText)
+  if (parsed.branch === undefined || parsed.branch !== currentBranch) {
+    return undefined
+  }
+  return { top, gitDir, planPath, branch: parsed.branch, files: parsed.files }
+}
+
+const formatPlanFiles = (lang: Lang, files: readonly string[]): string => {
+  if (files.length === 0) {
+    return lang === 'en' ? '(none)' : '(없음)'
+  }
+  const shown = files.slice(0, PLAN_FILES_MAX).join(', ')
+  return files.length > PLAN_FILES_MAX ? `${shown} …(+${files.length - PLAN_FILES_MAX})` : shown
+}
+
+/** 계획서 범위 가드가 켜져 있고 `filePath`가 허용 목록 밖이면 거부 사유를 돌려준다. */
+const planDeny = async ($: EngineInterface, filePath: string): Promise<string | undefined> => {
+  const scope = await planScope($)
+  if (scope === undefined) {
+    return undefined
+  }
+  const root = await $.session.root()
+  const path = resolvePath(root, filePath)
+  const verdict = judgeScope({ top: scope.top, gitDir: scope.gitDir, filePath: path, files: scope.files })
+  if (verdict.isAllowed) {
+    return undefined
+  }
+  const lang = await read($, langAtom)
+  return tr(lang, 'edit.deny.plan', {
+    path,
+    plan: scope.planPath,
+    branch: scope.branch,
+    files: formatPlanFiles(lang, scope.files),
+  })
+}
 
 /** `/edit` 등록. 세션 시작과 /clear·/resume 복원에서 부른다. */
 const registerEditCommand = async ($: EngineInterface): Promise<void> => {
@@ -200,9 +284,16 @@ const runEdit = async ($: EngineInterface, args: string): Promise<string> => {
     return tr(lang, 'edit.usage')
   }
   const target = await read($, editTargetAtom)
-  return target === null
-    ? `${tr(lang, 'edit.none')}\n${tr(lang, 'edit.usage')}`
-    : tr(lang, 'edit.current', { target: summarizeTarget(lang, target) })
+  const status =
+    target === null
+      ? `${tr(lang, 'edit.none')}\n${tr(lang, 'edit.usage')}`
+      : tr(lang, 'edit.current', { target: summarizeTarget(lang, target) })
+  const scope = await planScope($)
+  const planLine =
+    scope === undefined
+      ? tr(lang, 'edit.plan.inactive')
+      : tr(lang, 'edit.plan.active', { branch: scope.branch, count: scope.files.length })
+  return `${status}\n${planLine}`
 }
 
 /** 가드가 볼 활성 파일 범위. 모듈 off·대상 없음·선택 발췌(파일 모름)·다른 파일이면 `undefined`. */
@@ -291,6 +382,10 @@ export const registerEdit = (on: On): void => {
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Edit' }, async ($, e, next) => {
+    const planDenied = await planDeny($, e.file_path)
+    if (planDenied !== undefined) {
+      return { deny: planDenied }
+    }
     const target = await guardedRange($, e.file_path)
     if (target === undefined) {
       return next(e)
@@ -307,6 +402,10 @@ export const registerEdit = (on: On): void => {
   }).catch(async ($, e, next) => (next.called ? next(e) : { deny: await guardFailedText($) }))
 
   on('tool.call', { tool: 'Write' }, async ($, e, next) => {
+    const planDenied = await planDeny($, e.file_path)
+    if (planDenied !== undefined) {
+      return { deny: planDenied }
+    }
     const target = await guardedRange($, e.file_path)
     if (target === undefined) {
       return next(e)

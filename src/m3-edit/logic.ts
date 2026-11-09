@@ -189,3 +189,130 @@ export const describeForModel = (lang: Lang, target: EditTarget): string => {
     excerpt: target.excerpt,
   })
 }
+
+/** 파이프라인 [Handoff] 계획서(`.git/ai-task.md`)에서 읽은 범위. */
+export type PlanScope = { branch: string | undefined; files: string[] }
+
+const HEADING = /^#\s+(.+?)\s*$/
+const LIST_ITEM = /^\s*(?:[-*]|\d+[.)])\s+(.*)$/
+const BACKTICK_TOKEN = /`([^`]+)`/
+
+const pickToken = (raw: string): string => {
+  const tick = BACKTICK_TOKEN.exec(raw)
+  if (tick?.[1] !== undefined) {
+    return tick[1].trim()
+  }
+  return raw.trim().split(/\s+/)[0] ?? ''
+}
+
+const normalizePlanEntry = (raw: string): string => {
+  const slashed = raw.replace(/\\/g, '/')
+  const isDir = slashed.endsWith('/')
+  const collapsed = collapse(slashed)
+  return isDir && collapsed !== '' ? `${collapsed}/` : collapsed
+}
+
+/** 파이프라인 계획서 마크다운에서 `# 브랜치`와 `# 변경 대상 파일` 목록을 추출한다. */
+export const parsePlanScope = (text: string): PlanScope => {
+  const sections = new Map<string, string[]>()
+  let current: string[] | undefined
+  let isFenced = false
+  for (const line of toLines(text)) {
+    if (/^\s*```/.test(line)) {
+      isFenced = !isFenced
+      continue
+    }
+    if (isFenced) {
+      continue
+    }
+    const heading = HEADING.exec(line)
+    if (heading?.[1] !== undefined) {
+      const title = heading[1]
+      if (sections.has(title)) {
+        current = undefined
+      } else {
+        current = []
+        sections.set(title, current)
+      }
+      continue
+    }
+    current?.push(line)
+  }
+
+  let branch: string | undefined
+  for (const line of sections.get('브랜치') ?? []) {
+    if (line.trim() === '') {
+      continue
+    }
+    const body = LIST_ITEM.exec(line)?.[1] ?? line
+    const token = pickToken(body)
+    if (token !== '') {
+      branch = token
+    }
+    break
+  }
+
+  const files: string[] = []
+  for (const line of sections.get('변경 대상 파일') ?? []) {
+    const item = LIST_ITEM.exec(line)?.[1]
+    if (item === undefined) {
+      continue
+    }
+    const normalized = normalizePlanEntry(pickToken(item))
+    if (normalized !== '' && !files.includes(normalized)) {
+      files.push(normalized)
+    }
+  }
+
+  return { branch, files }
+}
+
+/** 계획서 범위 판정. 저장소 밖·git 디렉터리 안은 판정 대상이 아니므로 허용. */
+export type ScopeVerdict =
+  | { isAllowed: true; reason: 'outside-repo' | 'git-dir' | 'listed' }
+  | { isAllowed: false }
+
+const isInsideDir = (dir: string, filePath: string): boolean => {
+  const prefix = dir.replace(/\/+$/, '').toLowerCase()
+  const target = filePath.toLowerCase()
+  return target === prefix || target.startsWith(`${prefix}/`)
+}
+
+/** 파일 경로가 계획서 `# 변경 대상 파일` 범위 안인지 판정한다. */
+export const judgeScope = (input: {
+  top: string
+  gitDir: string
+  filePath: string
+  files: readonly string[]
+}): ScopeVerdict => {
+  const top = resolvePath('', input.top).replace(/\/+$/, '')
+  const gitDir = resolvePath(top, input.gitDir).replace(/\/+$/, '')
+  const target = resolvePath(top, input.filePath)
+
+  if (isInsideDir(gitDir, target) || isInsideDir(`${top}/.git`, target)) {
+    return { isAllowed: true, reason: 'git-dir' }
+  }
+  if (!isInsideDir(top, target)) {
+    return { isAllowed: true, reason: 'outside-repo' }
+  }
+
+  const targetLower = target.toLowerCase()
+  for (const entry of input.files) {
+    if (entry === '') {
+      continue
+    }
+    if (/[\\/]$/.test(entry)) {
+      const dir = resolvePath(top, entry)
+      if (isInsideDir(dir, target)) {
+        return { isAllowed: true, reason: 'listed' }
+      }
+      continue
+    }
+    if (resolvePath(top, entry).toLowerCase() === targetLower) {
+      return { isAllowed: true, reason: 'listed' }
+    }
+  }
+
+  return { isAllowed: false }
+}
+
