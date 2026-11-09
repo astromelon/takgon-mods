@@ -49,7 +49,7 @@ export type TaskItem = {
 
 // ── M6 panel ───────────────────────────────────────────────────────
 
-export type PanelTab = 'pinboard' | 'tasks' | 'agents' | 'usage' | 'handoff'
+export type PanelTab = 'pinboard' | 'tasks' | 'agents' | 'usage' | 'handoff' | 'gate'
 
 export type Pin = { id: string; text: string; createdAt: number }
 
@@ -68,6 +68,31 @@ export type UsageSnapshot = {
   rateLimits: { kind: string; percentUsed: number; resetsAt?: string }[]
   costUsd?: number
   at: number
+}
+
+/** 게이트 훅 로그를 남기는 AI 도구 식별자. */
+export type GateTool = 'claude' | 'agy' | 'codex'
+
+/** 게이트 훅 로그(JSONL) 한 줄을 정규화한 기록. */
+export type GateRecord = {
+  ts: string
+  at: number
+  tool: GateTool
+  decision: string
+  hits: string[]
+  command: string
+  cwd: string
+}
+
+/** 게이트·파이프라인 동기화 이벤트 한 건. */
+export type SyncEvent = { id: number; ts: string; passed: boolean; changed: string[]; summary: string }
+
+/** Gate 탭에 그릴 차단 기록·동기화 이벤트·읽기 실패 출처(`'claude'|'agy'|'codex'|'sync'`) 스냅샷. */
+export type GateView = {
+  records: GateRecord[]
+  sync: SyncEvent[]
+  unreadable: string[]
+  loadedAt: number
 }
 
 // ── M7 handoff ─────────────────────────────────────────────────────
@@ -138,6 +163,10 @@ declare module 'claude-code' {
       usage: UsageSnapshot | null
       /** 사용량 경고 임계치(%)(`g/m6/threshold` 미러). Usage 탭이 그린다. */
       usageThreshold: number
+      /** Gate 탭의 차단 기록·동기화 이벤트 스냅샷. 아직 불러오지 않았으면 null. */
+      gate: GateView | null
+      /** 마지막으로 해석한 동기화 이벤트 파일(`.sync-events.json`) mtime(ms). 없으면 0. */
+      gateSyncMtime: number
 
       // M7 handoff
       handoff: HandoffInfo | null

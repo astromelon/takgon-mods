@@ -3,14 +3,14 @@
  *
  * `$`를 받지 않는다(엔진이 import 경계 너머의 `$` 전달을 거부한다). store·state 접근은 `index.tsx`에서 한다.
  */
-import type { AgentRun, PanelTab, Pin, UsageSnapshot } from '../../types'
+import type { AgentRun, GateRecord, GateTool, PanelTab, Pin, SyncEvent, UsageSnapshot } from '../../types'
 import { parsePercent } from '../shared/settings'
 
 /** pane id. `ui.render`의 `requestId`와 같다. */
 export const PANE_ID = 'takgon-panel'
 
 /** 탭 순서. */
-export const TABS: readonly PanelTab[] = ['pinboard', 'tasks', 'agents', 'usage', 'handoff']
+export const TABS: readonly PanelTab[] = ['pinboard', 'tasks', 'agents', 'usage', 'handoff', 'gate']
 
 /** 프로젝트당 핀 상한. */
 export const MAX_PINS = 100
@@ -222,4 +222,160 @@ export const visible = <T>(items: readonly T[], rows: number): { shown: T[]; hid
   }
   const shown = items.slice(0, Math.max(1, room - 1))
   return { shown, hidden: items.length - shown.length }
+}
+
+/** 게이트 명령·동기화 요약 최대 길이(문자). */
+export const GATE_COMMAND_MAX = 200
+
+/** 게이트 기록 표시 상한(건). */
+export const GATE_RECORDS_MAX = 50
+
+const truncateChars = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text
+
+const toStringList = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+
+/** 게이트 훅 JSONL 원문을 도구별 `GateRecord` 목록으로 해석한다. 깨진 줄·시각 없는 줄은 건너뛴다. */
+export const parseGateLog = (text: string, tool: GateTool): GateRecord[] => {
+  const records: GateRecord[] = []
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (line === '') {
+      continue
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (!isRecord(parsed) || typeof parsed.ts !== 'string') {
+      continue
+    }
+    const at = Date.parse(parsed.ts)
+    if (!Number.isFinite(at)) {
+      continue
+    }
+    const rawDecision = typeof parsed.decision === 'string' ? parsed.decision.trim() : ''
+    const decision =
+      rawDecision === '' ? '?' : rawDecision.startsWith('logged-only') ? 'log' : rawDecision
+    const workspace = toStringList(parsed.workspace)
+    const cwd =
+      typeof parsed.cwd === 'string' && parsed.cwd !== '' ? parsed.cwd : (workspace[0] ?? '')
+    const rawCommand = typeof parsed.command === 'string' ? parsed.command : ''
+    const command = truncateChars(rawCommand.replace(/\s+/g, ' ').trim(), GATE_COMMAND_MAX)
+    records.push({
+      ts: parsed.ts,
+      at,
+      tool,
+      decision,
+      hits: toStringList(parsed.hits),
+      command,
+      cwd,
+    })
+  }
+  return records
+}
+
+/** 여러 도구의 게이트 기록 목록을 합쳐 `at` 내림차순(동률이면 입력 순서 유지) 최근 `limit`건을 돌려준다. */
+export const mergeGateRecords = (
+  lists: readonly (readonly GateRecord[])[],
+  limit: number,
+): GateRecord[] =>
+  lists
+    .flat()
+    .sort((a, b) => b.at - a.at)
+    .slice(0, Math.max(0, limit))
+
+const firstNonEmptyLine = (text: string): string => {
+  for (const raw of text.split(/\r?\n/)) {
+    const trimmed = raw.trim()
+    if (trimmed !== '') {
+      return truncateChars(trimmed, GATE_COMMAND_MAX)
+    }
+  }
+  return ''
+}
+
+/** `~/.ai-gate/.sync-events.json` 원문을 해석한다. 깨진 입력은 빈 결과로 돌려준다. */
+export const parseSyncEvents = (text: string): { lastId: number; events: SyncEvent[] } => {
+  if (text.trim() === '') {
+    return { lastId: 0, events: [] }
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return { lastId: 0, events: [] }
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.events)) {
+    return { lastId: 0, events: [] }
+  }
+  const events: SyncEvent[] = []
+  for (const item of parsed.events) {
+    if (
+      !isRecord(item) ||
+      typeof item.id !== 'number' ||
+      !Number.isFinite(item.id) ||
+      typeof item.passed !== 'boolean'
+    ) {
+      continue
+    }
+    const rawDetail = item.passed
+      ? typeof item.notice === 'string'
+        ? item.notice
+        : ''
+      : typeof item.reason === 'string'
+        ? item.reason
+        : ''
+    events.push({
+      id: item.id,
+      ts: typeof item.ts === 'string' ? item.ts : '',
+      passed: item.passed,
+      changed: toStringList(item.changed),
+      summary: firstNonEmptyLine(rawDetail),
+    })
+  }
+  const lastId =
+    typeof parsed.last_id === 'number' && Number.isFinite(parsed.last_id)
+      ? parsed.last_id
+      : events.reduce((max, event) => Math.max(max, event.id), 0)
+  return { lastId, events }
+}
+
+/** 아직 알리지 않은 동기화 이벤트 중 마지막 상태가 실패일 때만 알림 대상으로 돌려준다. */
+export const syncFailuresToNotify = (
+  events: readonly SyncEvent[],
+  seenId: number | undefined,
+): SyncEvent[] => {
+  const candidates = seenId === undefined ? events : events.filter(event => event.id > seenId)
+  const last = candidates[candidates.length - 1]
+  return last !== undefined && !last.passed ? [last] : []
+}
+
+/** 탭에 보일 최근 동기화 이벤트 수(최신이 먼저). */
+export const SYNC_SHOWN = 5
+
+/** 홈 디렉터리 기준 게이트 로그 3개와 동기화 이벤트 파일 경로. */
+export const gatePaths = (
+  home: string,
+): { logs: { claude: string; agy: string; codex: string }; sync: string } => {
+  const base = home.replace(/\\/g, '/').replace(/\/+$/, '')
+  return {
+    logs: {
+      claude: `${base}/.claude/hooks/node4-approval-gate.log`,
+      agy: `${base}/.gemini/config/hooks/node4-approval-gate-agy.log`,
+      codex: `${base}/.codex/hooks/node4-approval-gate-codex.log`,
+    },
+    sync: `${base}/.ai-gate/.sync-events.json`,
+  }
+}
+
+/** ISO 시각 문자열(`YYYY-MM-DDTHH:MM...`)을 `MM-DD HH:MM`으로 줄인다. 형식이 다르면 앞 16자. */
+export const shortTs = (ts: string): string => {
+  const match = /^\d{4}-(\d{2}-\d{2})T(\d{2}:\d{2})/.exec(ts)
+  return match !== null && match[1] !== undefined && match[2] !== undefined
+    ? `${match[1]} ${match[2]}`
+    : ts.slice(0, 16)
 }

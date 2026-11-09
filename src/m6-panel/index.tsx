@@ -1,7 +1,18 @@
 import { atom, read, update } from 'claude-code'
 import type { CommandSpec, EngineInterface, On } from 'claude-code'
 
-import type { AgentRun, CommandRegistration, Lang, PanelTab, Pin, TaskItem, UsageSnapshot } from '../../types'
+import type {
+  AgentRun,
+  CommandRegistration,
+  GateRecord,
+  GateTool,
+  GateView,
+  Lang,
+  PanelTab,
+  Pin,
+  TaskItem,
+  UsageSnapshot,
+} from '../../types'
 import { t, toLang } from '../shared/i18n'
 import { globalKey, projectId, projectKey } from '../shared/keys'
 import { commandsKey, markNotified, refusalReason, registerCause, toCommandMap, toPercent } from '../shared/settings'
@@ -9,17 +20,25 @@ import { ALL_ON } from '../shared/state'
 import { toTasks, toggleTask } from '../shared/tasks'
 import { fit } from '../shared/text'
 import {
+  GATE_RECORDS_MAX,
   PANE_ID,
+  SYNC_SHOWN,
   TABS,
   USAGE_THRESHOLD,
   addPin,
   formatTokens,
+  gatePaths,
   lastAssistantText,
+  mergeGateRecords,
+  parseGateLog,
   parsePanelArgs,
   parsePinArgs,
+  parseSyncEvents,
   removePin,
   applyAgentStatuses,
+  shortTs,
   startAgent,
+  syncFailuresToNotify,
   toPins,
   toSnapshot,
   usageAlerts,
@@ -39,6 +58,8 @@ const tasksAtom = atom({ plugin: 'takgon-mods', key: 'tasks' } as const, [])
 const agentsAtom = atom({ plugin: 'takgon-mods', key: 'agents' } as const, [])
 const usageAtom = atom({ plugin: 'takgon-mods', key: 'usage' } as const, null)
 const usageThresholdAtom = atom({ plugin: 'takgon-mods', key: 'usageThreshold' } as const, USAGE_THRESHOLD)
+const gateAtom = atom({ plugin: 'takgon-mods', key: 'gate' } as const, null)
+const gateSyncMtimeAtom = atom({ plugin: 'takgon-mods', key: 'gateSyncMtime' } as const, 0)
 const handoffAtom = atom({ plugin: 'takgon-mods', key: 'handoff' } as const, null)
 const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
 
@@ -91,6 +112,111 @@ const tasksKey = (pid: string): string => projectKey(pid, 'm4', 'tasks')
 /** 사용량 경고 임계치(%) 전역 store 키. 없으면 80. */
 const THRESHOLD_KEY = globalKey('m6', 'threshold')
 
+/** 마지막으로 알린 동기화 이벤트 id 전역 store 키. */
+const SYNC_SEEN_KEY = globalKey('m6', 'syncSeen')
+
+const GATE_TOOLS: readonly GateTool[] = ['claude', 'agy', 'codex']
+
+/** 사용자 홈 경로. USERPROFILE → HOME 순으로 읽고 비어 있으면 undefined. */
+const homeDir = async ($: EngineInterface): Promise<string | undefined> => {
+  const userProfile = await $.env.get('USERPROFILE').catch(() => undefined)
+  const raw = userProfile ?? (await $.env.get('HOME').catch(() => undefined))
+  const trimmed = raw?.trim() ?? ''
+  return trimmed === '' ? undefined : trimmed
+}
+
+/** 파일이 있을 때만 읽는다. 있는데 읽기에 실패하면 `failed: true`로 표시한다. */
+const readIfExists = async (
+  $: EngineInterface,
+  path: string,
+): Promise<{ text: string; failed?: boolean }> => {
+  let exists = false
+  try {
+    exists = await $.fs.exists(path)
+  } catch {
+    return { text: '', failed: true }
+  }
+  if (!exists) {
+    return { text: '' }
+  }
+  try {
+    return { text: await $.fs.read(path) }
+  } catch {
+    return { text: '', failed: true }
+  }
+}
+
+/** 3개 도구 게이트 로그(회전 파일 포함)와 동기화 이벤트를 읽어 `gate` 상태를 갱신한다. */
+const refreshGate = async ($: EngineInterface): Promise<void> => {
+  const now = await $.clock.now()
+  const home = (await isOn($)) ? await homeDir($) : undefined
+  if (home === undefined) {
+    await update($, gateAtom, () => ({ records: [], sync: [], unreadable: [], loadedAt: now }))
+    return
+  }
+  const paths = gatePaths(home)
+  const unreadable: string[] = []
+  const lists: GateRecord[][] = []
+  for (const tool of GATE_TOOLS) {
+    const path = paths.logs[tool]
+    const rotated = await readIfExists($, `${path}.1`)
+    const current = await readIfExists($, path)
+    if (rotated.failed === true || current.failed === true) {
+      unreadable.push(tool)
+    }
+    lists.push([...parseGateLog(rotated.text, tool), ...parseGateLog(current.text, tool)])
+  }
+  const syncRead = await readIfExists($, paths.sync)
+  if (syncRead.failed === true) {
+    unreadable.push('sync')
+  }
+  const records = mergeGateRecords(lists, GATE_RECORDS_MAX)
+  const sync = [...parseSyncEvents(syncRead.text).events].slice(-SYNC_SHOWN).reverse()
+  await update($, gateAtom, () => ({ records, sync, unreadable, loadedAt: now }))
+}
+
+/** 동기화 이벤트 파일 mtime이 바뀌었을 때만 다시 읽어 새 실패를 이벤트당 1회 toast로 알린다. */
+const checkSync = async ($: EngineInterface): Promise<void> => {
+  if (!(await isOn($))) {
+    return
+  }
+  const home = await homeDir($)
+  if (home === undefined) {
+    return
+  }
+  const { sync: syncPath } = gatePaths(home)
+  let mtimeMs: number
+  try {
+    const stat = await $.fs.stat(syncPath)
+    mtimeMs = stat.mtimeMs
+  } catch {
+    return
+  }
+  if (mtimeMs === (await read($, gateSyncMtimeAtom))) {
+    return
+  }
+  let text: string
+  try {
+    text = await $.fs.read(syncPath)
+  } catch {
+    return
+  }
+  await update($, gateSyncMtimeAtom, () => mtimeMs)
+  const { events } = parseSyncEvents(text)
+  const recentSync = [...events].slice(-SYNC_SHOWN).reverse()
+  await update($, gateAtom, prev => (prev === null ? null : { ...prev, sync: recentSync }))
+  const rawSeen = await $.store.get(SYNC_SEEN_KEY)
+  const seen = typeof rawSeen === 'number' && Number.isFinite(rawSeen) ? rawSeen : undefined
+  const lang = await langOf($)
+  for (const failure of syncFailuresToNotify(events, seen)) {
+    $.ui.toast(tr(lang, 'gate.syncToast', { id: failure.id, summary: failure.summary }))
+  }
+  const lastEvent = events[events.length - 1]
+  if (lastEvent !== undefined) {
+    await $.store.set(SYNC_SEEN_KEY, lastEvent.id)
+  }
+}
+
 /** 핀·할 일을 store에서 다시 읽는다. 에이전트·사용량은 세션 범위라 복원하지 않는다. */
 const restore = async ($: EngineInterface): Promise<void> => {
   const pid = await pidOf($)
@@ -121,7 +247,7 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 /** 세션 시작: 명령 등록과 복원. */
 const init = async ($: EngineInterface): Promise<void> => {
   const lang = await langOf($)
-  await registerCommand($, { name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close | pinboard | tasks | agents | usage | handoff | threshold <1-99>]' })
+  await registerCommand($, { name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close | pinboard | tasks | agents | usage | handoff | gate | threshold <1-99>]' })
   await registerCommand($, { name: 'pin', description: tr(lang, 'pin.description'), argumentHint: '[<text>|list]' })
   await ensureRestored($)
 }
@@ -213,6 +339,41 @@ const agentLine = (lang: Lang, run: AgentRun): string => {
   return `${run.status === 'running' ? '●' : '○'} ${run.agentType} · ${tr(lang, STATUS_KEY[run.status])}${seconds}`
 }
 
+const gateLines = (lang: Lang, gate: GateView): string[] => {
+  const lines: string[] = []
+  const latestSync = gate.sync[0]
+  if (latestSync === undefined) {
+    lines.push(tr(lang, 'gate.syncNone'))
+  } else {
+    lines.push(
+      tr(lang, latestSync.passed ? 'gate.syncPass' : 'gate.syncFail', {
+        id: latestSync.id,
+        ts: shortTs(latestSync.ts),
+        summary: latestSync.summary,
+      }),
+    )
+  }
+  if (gate.unreadable.length > 0) {
+    lines.push(tr(lang, 'gate.unreadable', { names: gate.unreadable.join(', ') }))
+  }
+  if (gate.records.length === 0) {
+    lines.push(tr(lang, 'gate.noRecords'))
+  } else {
+    for (const rec of gate.records) {
+      lines.push(
+        tr(lang, 'gate.record', {
+          ts: shortTs(rec.ts),
+          tool: rec.tool,
+          decision: rec.decision,
+          hits: rec.hits.join(','),
+          command: rec.command,
+        }),
+      )
+    }
+  }
+  return lines
+}
+
 /**
  * M6 Work Panel: `/panel`로 여는 pane(핀·할 일·에이전트·사용량·인수인계 탭)과 `/pin` 명령.
  *
@@ -256,6 +417,14 @@ export const registerPanel = (on: On): void => {
     }
     if (action !== 'open') {
       await update($, panelTabAtom, () => action)
+    }
+    const targetTab = action === 'open' ? await read($, panelTabAtom) : action
+    if (targetTab === 'gate') {
+      try {
+        await refreshGate($)
+      } catch {
+        // 게이트 기록을 못 읽어도 패널은 연다.
+      }
     }
     // 첫 measure 전이라도 Usage 탭이 비지 않게 한 번 채운다(breakdown 없이 무료 호출).
     if ((await read($, usageAtom)) === null) {
@@ -313,6 +482,11 @@ export const registerPanel = (on: On): void => {
       await ensureRestored($)
       await measure($, e)
       await refreshAgents($)
+      try {
+        await checkSync($)
+      } catch {
+        // 동기화 확인 실패가 다음 훅으로 번지지 않게 한다.
+      }
     }
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -338,7 +512,16 @@ export const registerPanel = (on: On): void => {
             key={`tab-${one}`}
             hotkey={String(i + 1)}
             variant={one === tab ? 'primary' : 'secondary'}
-            onPress={() => update($, panelTabAtom, () => one)}
+            onPress={async () => {
+              await update($, panelTabAtom, () => one)
+              if (one === 'gate') {
+                try {
+                  await refreshGate($)
+                } catch {
+                  // 게이트 로그 갱신 실패는 무시한다.
+                }
+              }
+            }}
           >
             {tr(lang, `tab.${one}`)}
           </Button>
@@ -406,6 +589,21 @@ export const registerPanel = (on: On): void => {
           {more(hidden)}
         </Box>
       )
+    } else if (tab === 'gate') {
+      const gate = await read($, gateAtom)
+      if (gate === null) {
+        body = <Text dimColor>{fit(tr(lang, 'gate.empty'), columns)}</Text>
+      } else {
+        const { shown, hidden } = visible(gateLines(lang, gate), rows)
+        body = (
+          <Box flexDirection="column">
+            {shown.map((line, i) => (
+              <Text key={`gate-${i}`}>{fit(line, columns)}</Text>
+            ))}
+            {more(hidden)}
+          </Box>
+        )
+      }
     } else {
       const handoff = await read($, handoffAtom)
       const lines = handoff === null ? [] : handoff.summary.split('\n').filter(line => line.trim() !== '')

@@ -3,10 +3,10 @@ import { createTranslator } from '../shared/i18n'
 /** M6 기본(ko) 사전. 키 목록의 단일 출처다. */
 const ko = {
   'panel.title': '작업 패널',
-  'panel.description': '작업 패널(핀·할 일·에이전트·사용량·인수인계) 열기/닫기, 사용량 경고 임계치 설정',
+  'panel.description': '작업 패널(핀·할 일·에이전트·사용량·인수인계·게이트) 열기/닫기, 사용량 경고 임계치 설정',
   'panel.opened': '작업 패널을 열었습니다.',
   'panel.closed': '작업 패널을 닫았습니다.',
-  'panel.usage': '사용법: /panel [pinboard|tasks|agents|usage|handoff] | /panel close | /panel threshold [1-99]',
+  'panel.usage': '사용법: /panel [pinboard|tasks|agents|usage|handoff|gate] | /panel close | /panel threshold [1-99]',
   'panel.threshold': '사용량 경고 임계치: {value}% (컨텍스트·사용 한도)',
   'panel.off': 'panel 모듈이 꺼져 있습니다. /mods panel on 으로 켜세요.',
   'tab.pinboard': '핀',
@@ -14,6 +14,7 @@ const ko = {
   'tab.agents': '에이전트',
   'tab.usage': '사용량',
   'tab.handoff': '인수인계',
+  'tab.gate': '게이트',
   'pin.description': '내용(또는 직전 응답)을 작업 패널에 고정, list로 목록',
   'pin.added': '핀을 추가했습니다: {text}',
   'pin.noReply': '고정할 직전 응답이 없습니다.',
@@ -35,6 +36,14 @@ const ko = {
   'usage.rateToast': '사용 한도 {kind}가 {percent}%에 도달했습니다.',
   'handoff.empty': '아직 인수인계 문서가 없습니다. /tk-handoff 로 만들 수 있습니다.',
   'handoff.path': '파일: {path}',
+  'gate.empty': '아직 불러오지 않았습니다. /panel gate 로 게이트 기록을 읽습니다.',
+  'gate.syncPass': '동기화 #{id} 통과 {ts} {summary}',
+  'gate.syncFail': '동기화 #{id} 실패 {ts} {summary}',
+  'gate.syncNone': '동기화 기록 없음',
+  'gate.unreadable': '읽기 실패: {names}',
+  'gate.record': '{ts} {tool} {decision} [{hits}] {command}',
+  'gate.noRecords': '게이트 차단 기록 없음',
+  'gate.syncToast': '게이트 동기화 테스트 실패 #{id}: {summary} (/panel gate)',
   'more': '… 외 {count}개',
 } as const
 
@@ -42,10 +51,10 @@ type Key = keyof typeof ko
 
 const en: Record<Key, string> = {
   'panel.title': 'Work panel',
-  'panel.description': 'Open/close the work panel (pins, tasks, agents, usage, handoff)',
+  'panel.description': 'Open/close the work panel (pins, tasks, agents, usage, handoff, gate)',
   'panel.opened': 'Work panel opened.',
   'panel.closed': 'Work panel closed.',
-  'panel.usage': 'Usage: /panel [pinboard|tasks|agents|usage|handoff] | /panel close | /panel threshold [1-99]',
+  'panel.usage': 'Usage: /panel [pinboard|tasks|agents|usage|handoff|gate] | /panel close | /panel threshold [1-99]',
   'panel.threshold': 'Usage warning threshold: {value}% (context and usage limits)',
   'panel.off': 'The panel module is off. Turn it on with /mods panel on.',
   'tab.pinboard': 'Pins',
@@ -53,6 +62,7 @@ const en: Record<Key, string> = {
   'tab.agents': 'Agents',
   'tab.usage': 'Usage',
   'tab.handoff': 'Handoff',
+  'tab.gate': 'Gate',
   'pin.description': 'Pin text (or the last reply) to the work panel; list to show pins',
   'pin.added': 'Pinned: {text}',
   'pin.noReply': 'There is no previous reply to pin.',
@@ -74,6 +84,14 @@ const en: Record<Key, string> = {
   'usage.rateToast': 'Usage limit {kind} reached {percent}%.',
   'handoff.empty': 'No handoff yet. Create one with /tk-handoff.',
   'handoff.path': 'File: {path}',
+  'gate.empty': 'Not loaded yet. Run /panel gate to load gate records.',
+  'gate.syncPass': 'Sync #{id} pass {ts} {summary}',
+  'gate.syncFail': 'Sync #{id} fail {ts} {summary}',
+  'gate.syncNone': 'No sync events',
+  'gate.unreadable': 'Unreadable: {names}',
+  'gate.record': '{ts} {tool} {decision} [{hits}] {command}',
+  'gate.noRecords': 'No gate records',
+  'gate.syncToast': 'Gate sync test failed #{id}: {summary} (/panel gate)',
   'more': '… {count} more',
 }
 

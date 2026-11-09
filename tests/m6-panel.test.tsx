@@ -1,16 +1,26 @@
 import type { AgentStatus, On, SessionMeasureInput } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
-import { projectId } from '../src/shared/keys'
+import type { GateView } from '../types'
+import { globalKey, projectId } from '../src/shared/keys'
 import { fit } from '../src/shared/text'
 import {
+  GATE_COMMAND_MAX,
   MAX_PIN_TEXT,
+  SYNC_SHOWN,
+  TABS,
   addPin,
-  toPins,
+  gatePaths,
+  mergeGateRecords,
+  parseGateLog,
   parsePanelArgs,
   parsePinArgs,
+  parseSyncEvents,
   applyAgentStatuses,
+  shortTs,
   startAgent,
+  syncFailuresToNotify,
+  toPins,
   toSnapshot,
   usageAlerts,
   visible,
@@ -399,5 +409,430 @@ describe('M6 명령·패널', () => {
 
     expect((await $.command.run(run('panel'))).text).toContain('꺼져')
     expect(opened).toEqual([])
+  })
+})
+
+describe('게이트 로그·동기화 이벤트(순수)', () => {
+  test('parseGateLog: 정상 JSONL을 정규화하고 깨진 줄·비정상 줄은 건너뛴다', () => {
+    const ts1 = '2026-11-10T02:38:47+09:00'
+    const ts2 = '2026-11-10T02:39:00+09:00'
+    const longCmd = `  echo\n   ${'a'.repeat(GATE_COMMAND_MAX + 10)}  `
+    const raw = [
+      JSON.stringify({
+        ts: ts1,
+        session_id: 's1',
+        tool: 'Bash',
+        cwd: 'C:\\workspace\\x',
+        hits: ['rm', 123, 'git push'],
+        decision: 'ask',
+        command: 'rm -rf build',
+      }),
+      '',
+      '{broken json',
+      JSON.stringify({ tool: 'Bash', command: 'ls' }),
+      JSON.stringify({ ts: 'not-a-date', command: 'ls' }),
+      JSON.stringify({
+        ts: ts2,
+        conversation_id: 'c1',
+        workspace: ['C:\\a', 'C:\\b'],
+        hits: 'not-array',
+        decision: 'logged-only (prompt rule)',
+        command: longCmd,
+      }),
+      JSON.stringify({
+        ts: ts2,
+        command: '  git   status \n --short ',
+      }),
+    ].join('\r\n')
+
+    const records = parseGateLog(raw, 'codex')
+    expect(records).toHaveLength(3)
+    expect(records[0]).toEqual({
+      ts: ts1,
+      at: Date.parse(ts1),
+      tool: 'codex',
+      decision: 'ask',
+      hits: ['rm', 'git push'],
+      command: 'rm -rf build',
+      cwd: 'C:\\workspace\\x',
+    })
+    expect(records[1]?.decision).toBe('log')
+    expect(records[1]?.cwd).toBe('C:\\a')
+    expect(records[1]?.hits).toEqual([])
+    expect(records[1]?.command).toHaveLength(GATE_COMMAND_MAX)
+    expect(records[1]?.command.endsWith('…')).toBe(true)
+    expect(records[2]?.decision).toBe('?')
+    expect(records[2]?.cwd).toBe('')
+    expect(records[2]?.command).toBe('git status --short')
+  })
+
+  test('mergeGateRecords: 여러 목록을 합쳐 at 내림차순(동률이면 입력 순서 유지)으로 limit건만 돌려준다', () => {
+    expect(mergeGateRecords([], 10)).toEqual([])
+    const base = { ts: '2026-11-10T00:00:00Z', decision: 'ask', hits: [], cwd: '' }
+    const r1 = { ...base, at: 100, tool: 'claude' as const, command: 'c1' }
+    const r2 = { ...base, at: 300, tool: 'claude' as const, command: 'c2' }
+    const r3 = { ...base, at: 200, tool: 'agy' as const, command: 'a1' }
+    const r4 = { ...base, at: 300, tool: 'codex' as const, command: 'x1' }
+
+    const merged = mergeGateRecords([[r1, r2], [r3], [r4]], 3)
+    expect(merged.map(r => r.command)).toEqual(['c2', 'x1', 'a1'])
+  })
+
+  test('parseSyncEvents: 정상·오류·대체 lastId 처리', () => {
+    const longReason = `\n  ${'실'.repeat(210)}\n둘째 줄`
+    const json = JSON.stringify({
+      last_id: 45,
+      events: [
+        {
+          ts: '2026-11-09T18:25:27+09:00',
+          detector: 'claude',
+          changed: ['README.md', 42],
+          passed: false,
+          reason: '[게이트 훅 동기화 테스트 실패] 수정된 파일: README.md\nERROR: fail',
+          id: 1,
+        },
+        {
+          ts: '2026-11-09T18:26:00+09:00',
+          changed: ['x.py'],
+          passed: true,
+          notice: '\n  [파이프라인 규칙 자동 갱신] 완료\n세부 내용',
+          id: 2,
+        },
+        {
+          ts: '2026-11-09T18:27:00+09:00',
+          changed: 'not-array',
+          passed: false,
+          reason: longReason,
+          id: 3,
+        },
+        {
+          ts: '2026-11-09T18:28:00+09:00',
+          passed: true,
+          id: 4,
+        },
+        { id: 'bad', passed: true },
+        { id: 5, passed: 'yes' },
+      ],
+    })
+
+    const parsed = parseSyncEvents(json)
+    expect(parsed.lastId).toBe(45)
+    expect(parsed.events).toHaveLength(4)
+    expect(parsed.events[0]).toEqual({
+      id: 1,
+      ts: '2026-11-09T18:25:27+09:00',
+      passed: false,
+      changed: ['README.md'],
+      summary: '[게이트 훅 동기화 테스트 실패] 수정된 파일: README.md',
+    })
+    expect(parsed.events[1]?.summary).toBe('[파이프라인 규칙 자동 갱신] 완료')
+    expect(parsed.events[2]?.changed).toEqual([])
+    expect(parsed.events[2]?.summary).toHaveLength(200)
+    expect(parsed.events[2]?.summary.endsWith('…')).toBe(true)
+    expect(parsed.events[3]?.summary).toBe('')
+
+    // last_id가 숫자가 아니면 이벤트 id 최댓값(없으면 0)
+    expect(parseSyncEvents(JSON.stringify({ last_id: 'no', events: parsed.events })).lastId).toBe(4)
+    expect(parseSyncEvents(JSON.stringify({ events: [] })).lastId).toBe(0)
+    expect(parseSyncEvents('')).toEqual({ lastId: 0, events: [] })
+    expect(parseSyncEvents('{bad')).toEqual({ lastId: 0, events: [] })
+    expect(parseSyncEvents(JSON.stringify({ last_id: 3, events: 'nope' }))).toEqual({ lastId: 0, events: [] })
+  })
+
+  test('syncFailuresToNotify: 처음(undefined)이거나 seenId 이후 마지막 이벤트가 실패일 때만 반환한다', () => {
+    const fail1 = { id: 1, ts: 't1', passed: false, changed: ['a'], summary: 's1' }
+    const pass2 = { id: 2, ts: 't2', passed: true, changed: ['a'], summary: 's2' }
+    const fail3 = { id: 3, ts: 't3', passed: false, changed: ['b'], summary: 's3' }
+
+    expect(syncFailuresToNotify([], undefined)).toEqual([])
+    expect(syncFailuresToNotify([fail1], undefined)).toEqual([fail1])
+    expect(syncFailuresToNotify([fail1, pass2], undefined)).toEqual([])
+
+    expect(syncFailuresToNotify([fail1, pass2], 2)).toEqual([])
+    expect(syncFailuresToNotify([fail1, pass2], 1)).toEqual([])
+    expect(syncFailuresToNotify([fail1, pass2, fail3], 1)).toEqual([fail3])
+    expect(syncFailuresToNotify([fail1, pass2, fail3], 3)).toEqual([])
+  })
+})
+
+const HOME = 'C:/Users/u'
+const PATHS = gatePaths(HOME)
+const SYNC_SEEN_KEY = globalKey('m6', 'syncSeen')
+const MEASURE_INPUT: SessionMeasureInput = {
+  context: { window: 200_000 },
+  rateLimits: [],
+  changed: [],
+}
+
+type GateMockOptions = {
+  home?: string | undefined
+  files?: Record<string, string>
+  unreadable?: readonly string[]
+  syncMtime?: number | null
+  store?: Record<string, unknown>
+}
+
+const setupGateWorld = (on: On, opts: GateMockOptions = {}) => {
+  const toasts: string[] = []
+  const opened: string[] = []
+  const reads: string[] = []
+  const stats: string[] = []
+  const state: Record<string, unknown> = {}
+  const storeData = new Map<string, unknown>(Object.entries(opts.store ?? {}))
+  const files = new Map<string, string>(Object.entries(opts.files ?? {}))
+  const unreadable = new Set<string>(opts.unreadable ?? [])
+  let syncMtime: number | null = opts.syncMtime ?? null
+  const hasHome = 'home' in opts ? opts.home : HOME
+
+  engine(on, toasts, opened)
+  on('state.set', ($, e, next) => {
+    state[e.key] = e.value
+    return next(e)
+  })
+  on('store.get', ($, e) => ({ value: storeData.get(e.key) }))
+  on('store.set', ($, e) => {
+    storeData.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('store.delete', ($, e) => {
+    storeData.delete(e.key)
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: [...storeData.keys()] }))
+  on('env.get', ($, e) => ({
+    value: e.name === 'USERPROFILE' ? hasHome : undefined,
+  }))
+  on('fs.exists', ($, e) => {
+    const p = e.path.replace(/\\/g, '/')
+    return { value: files.has(p) || unreadable.has(p) }
+  })
+  on('fs.read', ($, e) => {
+    const p = e.path.replace(/\\/g, '/')
+    reads.push(p)
+    if (unreadable.has(p)) {
+      return { deny: `EACCES: ${p}` }
+    }
+    const text = files.get(p)
+    if (text === undefined) {
+      return { deny: `ENOENT: ${p}` }
+    }
+    return { value: text }
+  })
+  on('fs.stat', ($, e) => {
+    const p = e.path.replace(/\\/g, '/')
+    stats.push(p)
+    if (p === PATHS.sync && syncMtime !== null) {
+      return { value: { kind: 'file', size: 10, mtimeMs: syncMtime, isLink: false } }
+    }
+    return { deny: `ENOENT: ${p}` }
+  })
+
+  return {
+    toasts,
+    opened,
+    reads,
+    stats,
+    state,
+    storeData,
+    files,
+    setSyncMtime: (mtime: number | null) => {
+      syncMtime = mtime
+    },
+  }
+}
+
+describe('gate 탭', () => {
+  test('순수: gatePaths·shortTs·parsePanelArgs·TABS', () => {
+    expect(gatePaths('C:\\Users\\u\\')).toEqual({
+      logs: {
+        claude: 'C:/Users/u/.claude/hooks/node4-approval-gate.log',
+        agy: 'C:/Users/u/.gemini/config/hooks/node4-approval-gate-agy.log',
+        codex: 'C:/Users/u/.codex/hooks/node4-approval-gate-codex.log',
+      },
+      sync: 'C:/Users/u/.ai-gate/.sync-events.json',
+    })
+    expect(shortTs('2026-11-10T02:38:47+09:00')).toBe('11-10 02:38')
+    expect(shortTs('not-iso-timestamp-string')).toBe('not-iso-timestam')
+    expect(parsePanelArgs('gate')).toBe('gate')
+    expect(TABS.at(-1)).toBe('gate')
+    expect(SYNC_SHOWN).toBe(5)
+  })
+
+  test('a. /panel gate: 회전 파일(.1)과 현재 로그를 합쳐 시각 내림차순으로 채운다', async ($, on) => {
+    const line = (ts: string, cmd: string) =>
+      JSON.stringify({ ts, decision: 'ask', hits: ['rule-a'], command: cmd, cwd: 'C:/proj' })
+    const world = setupGateWorld(on, {
+      files: {
+        [`${PATHS.logs.claude}.1`]: line('2026-11-10T01:00:00+09:00', 'blocked-cmd-1'),
+        [PATHS.logs.claude]: [
+          line('2026-11-10T02:00:00+09:00', 'blocked-cmd-2'),
+          line('2026-11-10T04:00:00+09:00', 'blocked-cmd-4'),
+        ].join('\n'),
+        [PATHS.logs.agy]: line('2026-11-10T03:00:00+09:00', 'blocked-cmd-3'),
+      },
+    })
+    await $.session.start(START)
+
+    const out = await $.command.run(run('panel', 'gate'))
+    expect(out.text).toContain('열었습니다')
+    expect(world.state.panelTab).toBe('gate')
+    const gate = world.state.gate as GateView | null | undefined
+    expect(gate?.unreadable).toEqual([])
+    expect(gate?.records.map(r => r.command)).toEqual([
+      'blocked-cmd-4',
+      'blocked-cmd-3',
+      'blocked-cmd-2',
+      'blocked-cmd-1',
+    ])
+
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({
+        plugin: 'takgon-mods',
+        surface,
+        component: 'Pane',
+        props: PANE,
+        requestId: 'takgon-panel',
+      })
+      expect((await ui.find({ key: 'tab-gate' }))?.props).toMatchObject({ variant: 'primary', hotkey: '6' })
+      expect(await ui.find({ type: 'Text', text: /blocked-cmd-4/ })).toBeDefined()
+      await ui.unmount()
+    }
+  })
+
+  test('b. 로그·동기화 파일이 전부 없어도 빈 배열로 채우고 패널을 연다', async ($, on) => {
+    const world = setupGateWorld(on)
+    await $.session.start(START)
+
+    const out = await $.command.run(run('panel', 'gate'))
+    expect(out.text).toContain('열었습니다')
+    expect(world.opened).toContain('takgon-panel')
+    const gate = world.state.gate as GateView | null | undefined
+    expect(gate?.records).toEqual([])
+    expect(gate?.sync).toEqual([])
+    expect(gate?.unreadable).toEqual([])
+  })
+
+  test('c. fs.exists는 true인데 fs.read가 거부되면 그 출처만 unreadable에 기록한다', async ($, on) => {
+    const line = JSON.stringify({
+      ts: '2026-11-10T02:00:00+09:00',
+      decision: 'deny',
+      hits: ['rule-b'],
+      command: 'blocked-cmd-x',
+    })
+    const world = setupGateWorld(on, {
+      files: { [PATHS.logs.claude]: line },
+      unreadable: [PATHS.logs.agy],
+    })
+    await $.session.start(START)
+
+    await $.command.run(run('panel', 'gate'))
+    const gate = world.state.gate as GateView | null | undefined
+    expect(gate?.unreadable).toEqual(['agy'])
+    expect(gate?.records).toHaveLength(1)
+    expect(gate?.records[0]?.tool).toBe('claude')
+  })
+
+  test('d. session.measure: 새 실패 이벤트는 toast 1회 + syncSeen 저장, mtime 그대로면 다시 읽지 않는다', async ($, on) => {
+    const syncJson = JSON.stringify({
+      last_id: 7,
+      events: [
+        { id: 7, ts: '2026-11-10T02:00:00+09:00', passed: false, changed: ['a.py'], reason: '불일치 발생' },
+      ],
+    })
+    const world = setupGateWorld(on, {
+      files: { [PATHS.sync]: syncJson },
+      syncMtime: 100,
+    })
+    await $.session.start(START)
+
+    await $.session.measure(MEASURE_INPUT)
+    expect(world.toasts).toHaveLength(1)
+    expect(world.toasts[0]).toContain('#7')
+    expect(world.toasts[0]).toContain('불일치 발생')
+    expect(world.storeData.get(SYNC_SEEN_KEY)).toBe(7)
+    const readsAfterFirst = world.reads.filter(p => p === PATHS.sync).length
+    expect(readsAfterFirst).toBe(1)
+
+    await $.session.measure(MEASURE_INPUT)
+    expect(world.reads.filter(p => p === PATHS.sync).length).toBe(1)
+    expect(world.toasts).toHaveLength(1)
+  })
+
+  test('e. mtime이 바뀌어도 같은 id나 통과면 toast 없고, 새 실패 id 9면 toast 1회·seen 9', async ($, on) => {
+    const fail7 = { id: 7, ts: '2026-11-10T02:00:00+09:00', passed: false, changed: ['a.py'], reason: '실패7' }
+    const pass8 = { id: 8, ts: '2026-11-10T02:05:00+09:00', passed: true, changed: ['a.py'], notice: '통과8' }
+    const fail9 = { id: 9, ts: '2026-11-10T02:10:00+09:00', passed: false, changed: ['b.py'], reason: '실패9' }
+    const world = setupGateWorld(on, {
+      files: { [PATHS.sync]: JSON.stringify({ last_id: 7, events: [fail7] }) },
+      syncMtime: 100,
+      store: { [SYNC_SEEN_KEY]: 7 },
+    })
+    await $.session.start(START)
+
+    // mtime 100이지만 이미 seen=7 → toast 없음
+    await $.session.measure(MEASURE_INPUT)
+    expect(world.toasts).toHaveLength(0)
+
+    // mtime 200으로 바뀌고 마지막이 통과(id 8) → toast 없음, seen=8
+    world.files.set(PATHS.sync, JSON.stringify({ last_id: 8, events: [fail7, pass8] }))
+    world.setSyncMtime(200)
+    await $.session.measure(MEASURE_INPUT)
+    expect(world.toasts).toHaveLength(0)
+    expect(world.storeData.get(SYNC_SEEN_KEY)).toBe(8)
+
+    // mtime 300으로 바뀌고 새 실패(id 9) → toast 1회, seen=9
+    world.files.set(PATHS.sync, JSON.stringify({ last_id: 9, events: [fail7, pass8, fail9] }))
+    world.setSyncMtime(300)
+    await $.session.measure(MEASURE_INPUT)
+    expect(world.toasts).toHaveLength(1)
+    expect(world.toasts[0]).toContain('#9')
+    expect(world.toasts[0]).toContain('실패9')
+    expect(world.storeData.get(SYNC_SEEN_KEY)).toBe(9)
+  })
+
+  test('f. /clear 뒤처럼 state가 비어 있어도 store의 syncSeen이 같으면 다시 toast하지 않는다', async ($, on) => {
+    const syncJson = JSON.stringify({
+      last_id: 7,
+      events: [{ id: 7, ts: '2026-11-10T02:00:00+09:00', passed: false, changed: ['a.py'], reason: '실패7' }],
+    })
+    const world = setupGateWorld(on, {
+      files: { [PATHS.sync]: syncJson },
+      syncMtime: 100,
+      store: { [SYNC_SEEN_KEY]: 7 },
+    })
+
+    // session.start 없이(= /clear 직후 state가 비어 있는 상태) 바로 measure 실행
+    await $.session.measure(MEASURE_INPUT)
+    expect(world.reads.filter(p => p === PATHS.sync)).toHaveLength(1)
+    expect(world.toasts).toHaveLength(0)
+  })
+
+  test('g. /mods panel off이면 session.measure에서 fs.stat·fs.read를 부르지 않는다', async ($, on) => {
+    const world = setupGateWorld(on, {
+      files: { [PATHS.sync]: '{"last_id":1,"events":[]}' },
+      syncMtime: 100,
+      store: { 'g/core/modules': { panel: false } },
+    })
+    await $.session.start(START)
+
+    await $.session.measure(MEASURE_INPUT)
+    expect(world.stats).toHaveLength(0)
+    expect(world.reads).toHaveLength(0)
+  })
+
+  test('h. USERPROFILE·HOME이 모두 undefined면 아무것도 읽지 않고 gate.records는 빈 배열이다', async ($, on) => {
+    const world = setupGateWorld(on, {
+      home: undefined,
+      files: { [PATHS.logs.claude]: '{"ts":"2026-11-10T01:00:00Z","command":"blocked-cmd"}' },
+      syncMtime: 100,
+    })
+    await $.session.start(START)
+
+    await $.command.run(run('panel', 'gate'))
+    await $.session.measure(MEASURE_INPUT)
+    expect(world.reads).toHaveLength(0)
+    expect(world.stats).toHaveLength(0)
+    const gate = world.state.gate as GateView | null | undefined
+    expect(gate?.records).toEqual([])
   })
 })
