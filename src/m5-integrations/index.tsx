@@ -420,7 +420,13 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 
 /** 세션 초기화: 명령 등록, 상태 복원, PR 폴링 시작. */
 const init = async ($: EngineInterface): Promise<void> => {
-  const { lang } = await settingsOf($)
+  // 설정을 못 읽어도(store 오류) 명령 등록과 PR 폴링은 기본 언어로 계속한다.
+  let lang: Lang = 'ko'
+  try {
+    lang = (await settingsOf($)).lang
+  } catch {
+    // 기본 언어로 진행한다.
+  }
   // 등록이 거부돼도(이름 충돌 등) PR 폴링과 상태 복원은 계속한다.
   await registerCommand($, {
     name: 'issue',
@@ -428,7 +434,12 @@ const init = async ($: EngineInterface): Promise<void> => {
     argumentHint: tr(lang, 'issue.argumentHint'),
   })
   await update($, restoredAtom, list => (list.includes('m5') ? list : [...list, 'm5']))
-  await restore($)
+  try {
+    await restore($)
+  } catch {
+    // 복원 실패로 폴링 시작까지 막지 않는다. 표시를 되돌려 다음 프롬프트·명령에서 다시 복원한다.
+    await update($, restoredAtom, list => list.filter(one => one !== 'm5'))
+  }
   await update($, prAtom, () => null)
   poller?.cancel()
   lastRefreshAt = null

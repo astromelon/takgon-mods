@@ -126,6 +126,21 @@ describe('모듈 초기화 격리', () => {
     expect(world.toasts.filter(text => text.includes('등록하지 못했습니다'))).toEqual([])
   })
 
+  test('코어 설정을 store에서 읽지 못해도 /mods를 등록하고 다른 모듈 초기화는 계속된다', async ($, on) => {
+    const world = engine(on, [])
+    const clock = mock.clock(on)
+    on('store.get', ($, e) => (e.key === 'g/core/modules' ? { deny: 'store unreadable' } : { value: undefined }))
+    on('store.set', () => ({ value: undefined }))
+    mock.env(on, {})
+
+    await $.session.start(START)
+    await clock.settle()
+
+    for (const name of ['mods', 'coach', 'panel', 'pin', 'issue', 'browse', 'edit', 'tk-handoff']) {
+      expect(world.listed).toContain(name)
+    }
+  })
+
   test('M7 명령은 사용자 /handoff 스킬과 겹치지 않게 tk-handoff로 등록한다', async ($, on) => {
     const world = engine(on, [])
     const clock = mock.clock(on)

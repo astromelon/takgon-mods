@@ -163,7 +163,12 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
 
 /** 세션 시작: 명령 등록과 복원. */
 const start = async ($: EngineInterface): Promise<void> => {
-  const { lang } = await settingsFromStore($)
+  let lang: Lang = 'ko'
+  try {
+    lang = (await settingsFromStore($)).lang
+  } catch {
+    // 설정을 못 읽어도 명령은 기본 언어로 등록한다.
+  }
   await registerCommand($, {
     name: 'tk-handoff',
     description: tr(lang, 'cmd.description'),

@@ -82,10 +82,22 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
   }
 }
 
-/** 세션 시작: 공통 상태 복원과 `/mods` 등록. */
+/**
+ * 세션 시작: 공통 상태 복원과 `/mods` 등록. 복원이나 설정 읽기가 실패해도 `/mods` 등록까지 가고, 실패하면 복원 표시를
+ * 되돌려 첫 프롬프트·명령에서 다시 시도한다. 이 훅이 실패하면 `.catch`가 답해 뒤쪽 모듈의 초기화까지 건너뛰어지기 때문이다.
+ */
 const start = async ($: EngineInterface): Promise<void> => {
-  await restore($)
-  const { lang } = await settings($)
+  try {
+    await restore($)
+  } catch {
+    await update($, restoredAtom, list => list.filter(one => one !== 'core')).catch(() => undefined)
+  }
+  let lang: Lang = 'ko'
+  try {
+    lang = (await settings($)).lang
+  } catch {
+    // 언어를 못 읽으면 기본 언어로 등록한다.
+  }
   await registerCommand($, {
     name: 'mods',
     description: t(lang, 'mods.description'),
@@ -100,7 +112,11 @@ const start = async ($: EngineInterface): Promise<void> => {
  */
 export const registerCore = (on: On): void => {
   on('session.start', async ($, e, next) => {
-    await start($)
+    try {
+      await start($)
+    } catch {
+      // 명령 등록 상태 기록 같은 부가 실패가 다른 모듈의 session.start 초기화를 막지 않게 한다.
+    }
     return next(e)
   })
 
