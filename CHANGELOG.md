@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-11-10
+
 ### Added
 - M3: ai-global-pipeline 계획서 범위 가드. 계획서(`.git/ai-task.md`)의 `# 브랜치`가 현재 브랜치와 같으면 `# 변경 대상 파일` 밖 저장소 파일의 Edit·Write를 거부한다. `/edit`(인자 없이)에 가드 상태를 표시한다.
 - M6: 패널 `gate` 탭(`/panel gate`, 6번). Claude·agy·Codex 게이트 차단 로그 최근 50건과 동기화 테스트 결과를 보여 주고, 새 동기화 실패는 이벤트마다 한 번 toast로 알린다.
