@@ -1,9 +1,13 @@
 """tools/e2e 하네스의 pyte 가상 터미널 재구성 및 비표준 CSI 필터 단위 테스트."""
 from __future__ import annotations
 
+import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # tools/e2e 디렉터리를 sys.path에 추가하여 harness 모듈 import 지원
 E2E_DIR = Path(__file__).resolve().parent
@@ -11,7 +15,7 @@ if str(E2E_DIR) not in sys.path:
     sys.path.insert(0, str(E2E_DIR))
 
 import pyte
-from harness import PRIVATE_CSI, Results, VirtualTerminal, project_id, squash
+from harness import PRIVATE_CSI, Results, StoreGuard, VirtualTerminal, find_store, project_id, squash
 
 
 class TestHarnessBasics(unittest.TestCase):
@@ -261,6 +265,42 @@ class TestVirtualTerminal(unittest.TestCase):
 
         # screen() 공백 제거(squash) 동작 확인
         self.assertEqual(vt.screen(mark), squash(vt.text(mark)))
+
+
+class TestStoreGuard(unittest.TestCase):
+    """StoreGuard는 설정 폴더를 따르고, store 파일을 쓰다 끊겨도 깨지지 않게 교체해야 한다."""
+
+    def _config(self, data: dict[str, object]) -> tuple[tempfile.TemporaryDirectory[str], Path]:
+        tmp = tempfile.TemporaryDirectory()
+        store_dir = Path(tmp.name) / "plugins" / "store"
+        store_dir.mkdir(parents=True)
+        path = store_dir / "takgon-mods_x-123.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return tmp, path
+
+    def test_find_store_follows_claude_config_dir(self) -> None:
+        tmp, path = self._config({})
+        with tmp, mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": tmp.name}):
+            self.assertEqual(find_store(required=False), path)
+
+    def test_restores_global_key_and_removes_project_keys(self) -> None:
+        tmp, path = self._config({"g/core/modules": {"a": 1}})
+        with tmp, mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": tmp.name}):
+            pid = project_id("C:/proj")
+            with StoreGuard(projects=[Path("C:/proj")], global_keys=["g/core/modules"]) as guard:
+                guard.seed("g/core/modules", {"a": 2})
+                guard.seed(f"p/{pid}/m4/tasks", [1])
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"g/core/modules": {"a": 1}})
+
+    def test_failed_write_keeps_original_file(self) -> None:
+        tmp, path = self._config({"keep": 1})
+        with tmp, mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": tmp.name}):
+            guard = StoreGuard()
+            with mock.patch("harness.os.replace", side_effect=OSError("boom")):
+                with self.assertRaises(OSError):
+                    guard.seed("new", 2)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"keep": 1})
+            self.assertEqual([p.name for p in path.parent.iterdir()], [path.name])
 
 
 if __name__ == "__main__":

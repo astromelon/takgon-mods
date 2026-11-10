@@ -49,9 +49,15 @@ def find_claude() -> str:
     raise SystemExit("claude 실행 파일을 찾지 못했습니다.")
 
 
+def config_dir() -> Path:
+    """Claude Code 설정 폴더. `CLAUDE_CONFIG_DIR`가 있으면 그 값, 없으면 `~/.claude`(store-backup.ps1과 같은 규칙)."""
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    return Path(override) if override else Path.home() / ".claude"
+
+
 def find_store(required: bool = True) -> Path | None:
-    """takgon-mods 플러그인 store 파일(`~/.claude/plugins/store/takgon-mods_*.json`)."""
-    matches = glob.glob(str(Path.home() / ".claude" / "plugins" / "store" / "takgon-mods_*.json"))
+    """takgon-mods 플러그인 store 파일(`<설정 폴더>/plugins/store/takgon-mods_*.json`)."""
+    matches = glob.glob(str(config_dir() / "plugins" / "store" / "takgon-mods_*.json"))
     if not matches:
         if required:
             raise SystemExit("takgon-mods store 파일이 없습니다. 플러그인을 설치하고 한 번 실행하세요.")
@@ -339,8 +345,14 @@ class StoreGuard:
     def _save(self, data: dict[str, object]) -> None:
         if not self.path:
             return
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+        # 제자리에 쓰다 끊기면 실제 store가 깨지므로, 같은 폴더의 임시 파일에 다 쓴 뒤 한 번에 교체한다.
+        tmp = self.path.with_name(f"{self.path.name}.{os.getpid()}.tmp")
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(tmp, self.path)
+        finally:
+            tmp.unlink(missing_ok=True)
 
     def seed(self, key: str, value: object) -> None:
         if not self.path:
