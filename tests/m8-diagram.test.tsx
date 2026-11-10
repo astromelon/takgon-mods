@@ -199,6 +199,25 @@ describe('turn.complete 사전 렌더', () => {
     expect(world.runs).toHaveLength(2)
   })
 
+  test('렌더 중에 끝난 다른 턴의 다이어그램도 앞 렌더가 끝난 뒤 렌더한다', async ($, on) => {
+    const world = engine(on, 'ok')
+    mock.store(on)
+    await $.session.start(START)
+    const other = ['graph LR', '  X-->Y'].join('\n')
+    const otherHash = diagramHash(other)
+
+    await $.turn.complete(complete(ANSWER))
+    await $.turn.complete(complete(['```mermaid', other, '```'].join('\n')))
+    await clock.settle()
+
+    expect(world.runs).toEqual([
+      ['mmdc', '-i', `${DIR}/${HASH}.mmd`, '-o', `${DIR}/${HASH}.svg`],
+      ['mmdc', '-i', `${DIR}/${HASH}.mmd`, '-o', `${DIR}/${HASH}.png`],
+      ['mmdc', '-i', `${DIR}/${otherHash}.mmd`, '-o', `${DIR}/${otherHash}.svg`],
+      ['mmdc', '-i', `${DIR}/${otherHash}.mmd`, '-o', `${DIR}/${otherHash}.png`],
+    ])
+  })
+
   test('모듈이 꺼져 있으면 아무것도 실행하지 않는다', async ($, on) => {
     const world = engine(on, 'ok')
     mock.store(on, { 'g/core/modules': { diagram: false } })

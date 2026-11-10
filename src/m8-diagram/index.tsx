@@ -172,23 +172,37 @@ const prerender = async ($: EngineInterface, answer: string): Promise<void> => {
  */
 export const registerDiagram = (on: On): void => {
   let isRendering = false
+  // 렌더 중에 끝난 턴의 답변. 앞 렌더가 끝난 뒤 이어서 렌더하며, 여러 개가 쌓이면 가장 최근 것만 남긴다
+  // (같은 답변의 블록은 `known`으로 걸러지고, 건너뛴 오래된 답변의 블록은 표시할 때 원본 Code로 남는다).
+  let pendingAnswer: string | undefined
 
   on('turn.complete', { reason: 'answer' }, async ($, e, next) => {
     const result = await next(e)
-    if (!isRendering && (await read($, modulesAtom)).diagram) {
-      // mmdc는 블록마다 두 번 뜨는 무거운 일이라 턴 마무리를 붙잡지 않도록 타이머로 떼어 낸다. 한 번에 하나만 돈다.
-      isRendering = true
-      const answer = e.answer
-      $.clock.after(0, async () => {
-        try {
-          await prerender($, answer)
-        } catch {
-          // 미리 렌더는 부가 기능이라 실패해도 답변 흐름에 영향을 주지 않는다.
-        } finally {
-          isRendering = false
-        }
-      })
+    if (!(await read($, modulesAtom)).diagram) {
+      return result
     }
+    if (isRendering) {
+      pendingAnswer = e.answer
+      return result
+    }
+    // mmdc는 블록마다 두 번 뜨는 무거운 일이라 턴 마무리를 붙잡지 않도록 타이머로 떼어 낸다. 한 번에 하나만 돈다.
+    isRendering = true
+    let answer: string | undefined = e.answer
+    $.clock.after(0, async () => {
+      try {
+        while (answer !== undefined) {
+          try {
+            await prerender($, answer)
+          } catch {
+            // 미리 렌더는 부가 기능이라 실패해도 답변 흐름에 영향을 주지 않는다.
+          }
+          answer = pendingAnswer
+          pendingAnswer = undefined
+        }
+      } finally {
+        isRendering = false
+      }
+    })
     return result
   })
 
