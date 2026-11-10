@@ -22,6 +22,20 @@ describe('M2 순수 로직', () => {
     expect(extractLocalUrl('see https://example.com:443/ and http://localhost/')).toBeUndefined()
   })
 
+  test('userinfo로 실제 호스트를 숨긴 URL은 로컬로 보지 않고 다음 후보를 찾는다', () => {
+    expect(extractLocalUrl('see http://localhost:3000@evil.example/x for details')).toBeUndefined()
+    expect(extractLocalUrl('http://127.0.0.1:80@evil.example/ then http://localhost:5173/'))
+      .toBe('http://localhost:5173/')
+    expect(extractLocalUrl('http://user:pw@localhost:3000/')).toBeUndefined()
+    expect(extractLocalUrl('http://localhost:5173.evil.example/')).toBeUndefined()
+  })
+
+  test('URL 뒤에 붙은 문장부호는 URL에 넣지 않는다', () => {
+    expect(extractLocalUrl('Local: http://localhost:5173/).')).toBe('http://localhost:5173/')
+    expect(extractLocalUrl('open http://localhost:3000, then')).toBe('http://localhost:3000')
+    expect(extractLocalUrl('(http://127.0.0.1:8080/app?x=1)')).toBe('http://127.0.0.1:8080/app?x=1')
+  })
+
   test('headless 출력의 마지막 JSON 줄을 읽는다', () => {
     const json = JSON.stringify({ ok: true, status: 200, title: 'App', consoleErrors: ['boom'] })
     expect(parseHeadlessOutput(`log line\n${json}\n`)?.title).toBe('App')

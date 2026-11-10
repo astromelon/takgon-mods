@@ -21,10 +21,36 @@ export type HeadlessCause = 'node-missing' | 'playwright-missing' | 'headless-fa
 /** 외부 브라우저를 여는 방법을 가르는 플랫폼. */
 export type Platform = 'windows' | 'mac' | 'linux'
 
-const LOCAL_URL = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+[^\s'"]*/
+const LOCAL_URL = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+[^\s'"]*/g
 
-/** 텍스트에서 첫 로컬 개발 서버 URL. 없으면 `undefined`. */
-export const extractLocalUrl = (text: string): string | undefined => LOCAL_URL.exec(text)?.[0]
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
+
+/** 문장 속 URL 뒤에 붙은 문장부호(`).`, `,` 등). */
+const TRAILING_PUNCTUATION = /[.,;:!?)\]}>]+$/
+
+/**
+ * 후보가 진짜 로컬 URL인지 파싱해서 확인한다. 정규식만으로는 `http://localhost:3000@evil.example/`처럼
+ * 앞부분이 userinfo이고 실제 호스트는 다른 주소인 URL을 구분하지 못한다.
+ */
+const isLocalUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value)
+    return LOCAL_HOSTS.has(url.hostname) && url.username === '' && url.password === ''
+  } catch {
+    return false
+  }
+}
+
+/** 텍스트에서 첫 로컬 개발 서버 URL(끝 문장부호 제외, 호스트가 실제로 로컬인 것만). 없으면 `undefined`. */
+export const extractLocalUrl = (text: string): string | undefined => {
+  for (const match of text.matchAll(LOCAL_URL)) {
+    const candidate = match[0].replace(TRAILING_PUNCTUATION, '')
+    if (isLocalUrl(candidate)) {
+      return candidate
+    }
+  }
+  return undefined
+}
 
 /** http(s) URL인지. `/browse` 인자 검증용. */
 export const isHttpUrl = (value: string): boolean => /^https?:\/\/\S+$/i.test(value)
