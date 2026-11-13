@@ -12,6 +12,7 @@ import {
   formatStamp,
   formatTime,
   handoffFileName,
+  isHandoffPath,
   parseHandoffArgs,
   shouldTrigger,
   summarize,
@@ -69,6 +70,10 @@ const THRESHOLD_KEY = globalKey('m7', 'threshold')
 
 /** 이 시간이 지나도 끝나지 않은 생성은 멈춘 것으로 보고 새로 시작한다(`$.model.fork`에는 시간 상한이 없다). */
 const GENERATING_STUCK_MS = 5 * 60_000
+
+/** 자동 인수인계 실패 시 최대 재시도 횟수. */
+const AUTO_RETRY_MAX = 3
+let autoFailures = 0
 
 /** 최신본 store 키: `p/{pid}/m7/latest`. */
 const latestKey = async ($: EngineInterface): Promise<string> =>
@@ -137,7 +142,7 @@ const restore = async ($: EngineInterface): Promise<void> => {
     return
   }
   const info = toHandoffInfo(await $.store.get(await latestKey($)))
-  if (info === null || !(await $.fs.exists(info.path))) {
+  if (info === null || !isHandoffPath(await $.session.root(), info.path) || !(await $.fs.exists(info.path))) {
     return
   }
   await update($, handoffAtom, () => info)
@@ -153,6 +158,8 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
     return
   }
   await update($, restoredAtom, list => (list.includes('m7') ? list : [...list, 'm7']))
+  // 자동 생성 실패 횟수는 대화(세션 시작·`/clear` 뒤) 단위로 센다. 모듈 변수라 /clear 뒤에도 남기 때문에 여기서 되돌린다.
+  autoFailures = 0
   try {
     await restore($)
   } catch {
@@ -208,7 +215,7 @@ const runCommand = async ($: EngineInterface, args: string): Promise<string> => 
   if (action === 'show') {
     return tr(lang, 'cmd.show', { time: formatTime(info.createdAt), path: info.path, summary: info.summary })
   }
-  if (!(await $.fs.exists(info.path))) {
+  if (!isHandoffPath(await $.session.root(), info.path) || !(await $.fs.exists(info.path))) {
     return tr(lang, 'cmd.missing', { path: info.path })
   }
   await update($, handoffAtom, () => info)
@@ -216,7 +223,7 @@ const runCommand = async ($: EngineInterface, args: string): Promise<string> => 
   return tr(lang, 'cmd.pending', { path: info.path })
 }
 
-/** 턴 종료 뒤 컨텍스트 사용률을 보고 세션당 1회 자동 생성한다. 실패는 조용히 넘긴다. */
+/** 턴 종료 뒤 컨텍스트 사용률을 보고 세션당 1회 자동 생성한다. 실패하면 최대 3회까지 재시도한다. */
 const autoHandoff = async ($: EngineInterface): Promise<void> => {
   if (!(await isOn($)) || (await read($, firedAtom))) {
     return
@@ -227,9 +234,19 @@ const autoHandoff = async ($: EngineInterface): Promise<void> => {
     return
   }
   await update($, firedAtom, () => true)
-  const result = await generate($)
-  if (result.isSaved) {
-    $.ui.toast(tr(await read($, langAtom), 'toast.saved', { path: result.info.path }))
+  try {
+    const result = await generate($)
+    if (result.isSaved) {
+      autoFailures = 0
+      $.ui.toast(tr(await read($, langAtom), 'toast.saved', { path: result.info.path }))
+      return
+    }
+  } catch {
+    // 실패 시 아래 재시도 판정으로 넘긴다.
+  }
+  autoFailures += 1
+  if (autoFailures < AUTO_RETRY_MAX) {
+    await update($, firedAtom, () => false)
   }
 }
 
@@ -240,7 +257,7 @@ const takePending = async ($: EngineInterface): Promise<string | null> => {
   }
   await update($, pendingAtom, () => false)
   const info = await read($, handoffAtom)
-  if (info === null || !(await $.fs.exists(info.path))) {
+  if (info === null || !isHandoffPath(await $.session.root(), info.path) || !(await $.fs.exists(info.path))) {
     return null
   }
   const text = await $.fs.read(info.path)

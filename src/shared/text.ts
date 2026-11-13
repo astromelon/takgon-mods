@@ -50,3 +50,9 @@ export const fit = (text: string, columns: number): string => {
   }
   return out
 }
+
+/** 본문 안의 가장 긴 백틱 연속보다 1 긴 코드 펜스(최소 3개). */
+export const fenceFor = (text: string): string => {
+  const longest = Math.max(2, ...(text.match(/`+/g) ?? []).map(run => run.length))
+  return '`'.repeat(longest + 1)
+}

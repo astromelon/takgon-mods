@@ -95,8 +95,20 @@ const renderBlock = async (
   const mmdPath = `${dir}/${block.hash}.mmd`
   const svgPath = `${dir}/${block.hash}.svg`
   const pngPath = `${dir}/${block.hash}.png`
-  const hasSvg = await $.fs.exists(svgPath)
-  const hasPng = await $.fs.exists(pngPath)
+  let hasSvg = await $.fs.exists(svgPath)
+  let hasPng = await $.fs.exists(pngPath)
+  if (hasSvg || hasPng) {
+    let cached = ''
+    try {
+      cached = await $.fs.read(mmdPath)
+    } catch {
+      cached = ''
+    }
+    if (cached !== block.code) {
+      hasSvg = false
+      hasPng = false
+    }
+  }
   if (!hasSvg || !hasPng) {
     await $.fs.write(mmdPath, block.code)
   }

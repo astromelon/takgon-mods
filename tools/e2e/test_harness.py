@@ -302,6 +302,32 @@ class TestStoreGuard(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"keep": 1})
             self.assertEqual([p.name for p in path.parent.iterdir()], [path.name])
 
+    def test_retries_when_file_changes_after_load_and_preserves_changes(self) -> None:
+        tmp, path = self._config({"init": 1})
+        with tmp, mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": tmp.name}):
+            guard = StoreGuard()
+            orig_load = guard._load
+            calls = 0
+
+            def racing_load() -> dict[str, object]:
+                nonlocal calls
+                calls += 1
+                data = orig_load()
+                if calls == 1:
+                    stat = path.stat()
+                    path.write_text(json.dumps({"init": 1, "concurrent": 99}), encoding="utf-8")
+                    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+                return data
+
+            with mock.patch.object(guard, "_load", side_effect=racing_load):
+                guard.seed("seeded", 2)
+
+            self.assertEqual(calls, 2)
+            self.assertEqual(
+                json.loads(path.read_text(encoding="utf-8")),
+                {"init": 1, "concurrent": 99, "seeded": 2},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

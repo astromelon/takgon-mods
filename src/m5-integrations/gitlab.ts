@@ -118,6 +118,6 @@ export const approvalDecision = (current: string, stdout: string): string => {
 
 /** 0이 아닌 종료를 원인으로 나눈다. 인증 실패만 따로, 나머지(MR 없음 등)는 조용히 숨긴다. */
 export const classifyGlabExit = (exitCode: number, stderr: string): GlabFailure =>
-  exitCode !== 0 && /401|unauthorized|glab auth login|no token|authenticat/i.test(stderr)
+  exitCode !== 0 && /\bHTTP 401\b|unauthorized|glab auth login|no token|authenticat/i.test(stderr)
     ? 'glab-auth'
     : 'no-pr'

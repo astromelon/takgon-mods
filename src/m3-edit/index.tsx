@@ -149,7 +149,12 @@ const planDeny = async ($: EngineInterface, filePath: string): Promise<string | 
 
 /** `/edit` 등록. 세션 시작과 /clear·/resume 복원에서 부른다. */
 const registerEditCommand = async ($: EngineInterface): Promise<void> => {
-  const lang = await read($, langAtom)
+  let lang: Lang = 'ko'
+  try {
+    lang = await read($, langAtom)
+  } catch {
+    // 기본 언어로 진행한다.
+  }
   await registerCommand($, {
     name: 'edit',
     description: tr(lang, 'edit.description'),
@@ -366,7 +371,11 @@ const guardFailedText = async ($: EngineInterface): Promise<string> => {
  */
 export const registerEdit = (on: On): void => {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    await registerEditCommand($)
+    try {
+      await registerEditCommand($)
+    } catch {
+      // 초기화 실패가 같은 플러그인의 뒤쪽 session.start 훅을 막지 않게 한다.
+    }
     return next(e)
   })
 
@@ -377,7 +386,19 @@ export const registerEdit = (on: On): void => {
     if (target === null || !(await isOn($))) {
       return next(e)
     }
-    const context = describeForModel(await read($, langAtom), target)
+    let fresh = target
+    if (target.kind === 'text' && target.path !== '') {
+      try {
+        const text = await $.fs.read(target.path)
+        const { excerpt } = sliceLines(text, target.startLine, target.endLine)
+        if (excerpt !== undefined) {
+          fresh = { ...target, excerpt }
+        }
+      } catch {
+        // 읽기 실패·범위 밖이면 저장된 발췌를 그대로 쓴다.
+      }
+    }
+    const context = describeForModel(await read($, langAtom), fresh)
     return next({ ...e, context: [...(e.context ?? []), context] })
   }).catch(($, e, next) => next(e))
 

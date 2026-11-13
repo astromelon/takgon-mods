@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { CommandSpec, EngineInterface, On, PromptSubmitInput, PromptSubmitResult } from 'claude-code'
 
-import type { CommandRegistration, TaskItem } from '../../types'
+import type { CommandRegistration, Lang, TaskItem } from '../../types'
 import { globalKey, projectId, projectKey } from '../shared/keys'
 import { t } from '../shared/i18n'
 import { commandsKey, markNotified, refusalReason, registerCause, toCommandMap } from '../shared/settings'
@@ -95,23 +95,35 @@ const restore = async ($: EngineInterface): Promise<void> => {
  * `session.start`를 다시 보내지 않으므로, 이 모듈의 훅에 처음 들어올 때 다시 채운다.
  */
 const ensureRestored = async ($: EngineInterface): Promise<void> => {
-  if ((await read($, restoredAtom)).includes('m4')) {
-    return
-  }
-  await update($, restoredAtom, list => (list.includes('m4') ? list : [...list, 'm4']))
   try {
-    await restore($)
+    if ((await read($, restoredAtom)).includes('m4')) {
+      return
+    }
+    await update($, restoredAtom, list => (list.includes('m4') ? list : [...list, 'm4']))
+    try {
+      await restore($)
+    } catch {
+      // 훅 실패로 번지면 같은 이벤트의 뒤쪽 훅이 건너뛰어지므로 삼키고, 다음 진입에서 다시 시도한다.
+      await update($, restoredAtom, list => list.filter(one => one !== 'm4')).catch(() => undefined)
+    }
   } catch {
-    // 훅 실패로 번지면 같은 이벤트의 뒤쪽 훅이 건너뛰어지므로 삼키고, 다음 진입에서 다시 시도한다.
-    await update($, restoredAtom, list => list.filter(one => one !== 'm4'))
-    return
+    // restoredAtom 읽기·갱신 실패도 훅 밖으로 내보내지 않는다.
   }
 }
 
-/** task 목록을 state와 store에 함께 쓴다. */
+/** 같은 프로세스 안에서 task store 읽기-수정-쓰기가 겹쳐 쓰기를 덮어쓰지 않게 직렬화한다. */
+let taskWriteQueue: Promise<void> = Promise.resolve()
+
+/** task 목록을 store 기준으로 갱신해 state와 store에 함께 쓴다. */
 const saveTasks = async ($: EngineInterface, fn: (tasks: TaskItem[]) => TaskItem[]): Promise<void> => {
-  const next = await update($, tasksAtom, fn)
-  await $.store.set(await tasksKey($), next)
+  const run = taskWriteQueue.then(async () => {
+    const key = await tasksKey($)
+    const next = fn(toTasks(await $.store.get(key)))
+    await $.store.set(key, next)
+    await update($, tasksAtom, () => next)
+  })
+  taskWriteQueue = run.catch(() => undefined)
+  await run
 }
 
 /** 체크 토글: 완료 상태를 뒤집어 저장한다. */
@@ -119,9 +131,9 @@ const onToggle = async ($: EngineInterface, id: string): Promise<void> => {
   await saveTasks($, tasks => toggleTask(tasks, id))
 }
 
-/** task 텍스트를 프롬프트로 제출한다. 사용자가 고른 것이므로 본인 말로 보낸다. */
+/** task 텍스트를 플러그인 메시지로 제출한다(asUser 없음: 모델은 "takgon-mods 플러그인이 보낸 메시지"로 읽는다). */
 const onSubmitTask = async ($: EngineInterface, text: string): Promise<void> => {
-  await $.prompt.submit({ text, asUser: true })
+  await $.prompt.submit({ text })
 }
 
 /** 이번 턴에 도구를 썼고 간격이 지났으면 fork로 다음 작업 후보를 만든다. 실패는 조용히 무시한다. */
@@ -215,13 +227,22 @@ export const registerComposer = (on: On): void => {
   let forkStartedAt: number | undefined
 
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    await ensureRestored($)
-    const lang = await read($, langAtom)
-    await registerCommand($, {
-      name: 'coach',
-      description: tr(lang, 'coach.description'),
-      argumentHint: '[on|off]',
-    })
+    try {
+      await ensureRestored($)
+      let lang: Lang = 'ko'
+      try {
+        lang = await read($, langAtom)
+      } catch {
+        // 기본 언어로 진행한다.
+      }
+      await registerCommand($, {
+        name: 'coach',
+        description: tr(lang, 'coach.description'),
+        argumentHint: '[on|off]',
+      })
+    } catch {
+      // 초기화 실패가 같은 플러그인의 뒤쪽 session.start 훅을 막지 않게 한다.
+    }
     return next(e)
   })
 

@@ -233,20 +233,29 @@ const restore = async ($: EngineInterface): Promise<void> => {
  * `session.start`를 다시 보내지 않으므로, 이 모듈의 훅에 처음 들어올 때 다시 채운다. 실패는 삼키고 다음에 재시도한다.
  */
 const ensureRestored = async ($: EngineInterface): Promise<void> => {
-  if ((await read($, restoredAtom)).includes('m6')) {
-    return
-  }
-  await update($, restoredAtom, list => (list.includes('m6') ? list : [...list, 'm6']))
   try {
-    await restore($)
+    if ((await read($, restoredAtom)).includes('m6')) {
+      return
+    }
+    await update($, restoredAtom, list => (list.includes('m6') ? list : [...list, 'm6']))
+    try {
+      await restore($)
+    } catch {
+      await update($, restoredAtom, list => list.filter(one => one !== 'm6')).catch(() => undefined)
+    }
   } catch {
-    await update($, restoredAtom, list => list.filter(one => one !== 'm6'))
+    // restoredAtom 읽기·갱신 실패도 훅 밖으로 내보내지 않는다.
   }
 }
 
 /** 세션 시작: 명령 등록과 복원. */
 const init = async ($: EngineInterface): Promise<void> => {
-  const lang = await langOf($)
+  let lang: Lang = 'ko'
+  try {
+    lang = await langOf($)
+  } catch {
+    // 기본 언어로 진행한다.
+  }
   await registerCommand($, { name: 'panel', description: tr(lang, 'panel.description'), argumentHint: '[close | pinboard | tasks | agents | usage | handoff | gate | threshold <1-99>]' })
   await registerCommand($, { name: 'pin', description: tr(lang, 'pin.description'), argumentHint: '[<text>|list]' })
   await ensureRestored($)
@@ -263,10 +272,22 @@ const refreshAgents = async ($: EngineInterface): Promise<void> => {
   }
 }
 
-/** 핀 목록을 atom 안에서 계산해(읽기→쓰기 사이에 다른 변경이 끼지 않게) 그 결과를 store에도 쓴다. */
+/** 같은 프로세스 안에서 핀 store 읽기-수정-쓰기가 겹쳐 쓰기를 덮어쓰지 않게 직렬화한다. */
+let pinWriteQueue: Promise<void> = Promise.resolve()
+/** 같은 프로세스 안에서 할 일 토글의 store 읽기-수정-쓰기를 직렬화한다. */
+let taskWriteQueue: Promise<void> = Promise.resolve()
+
+/** 핀 목록을 store 기준으로 계산해 저장하고 atom을 맞춘다. */
 const changePins = async ($: EngineInterface, change: (pins: Pin[]) => Pin[]): Promise<void> => {
-  const next = await update($, pinsAtom, pins => change(pins))
-  await $.store.set(pinsKey(await pidOf($)), next)
+  const run = pinWriteQueue.then(async () => {
+    const pid = await pidOf($)
+    const base = toPins(await $.store.get(pinsKey(pid)))
+    const next = change(base)
+    await $.store.set(pinsKey(pid), next)
+    await update($, pinsAtom, () => next)
+  })
+  pinWriteQueue = run.catch(() => undefined)
+  await run
 }
 
 /** 핀 추가. id는 시각 + 같은 시각 핀 개수로 만든다(난수 없이 고유). */
@@ -283,10 +304,16 @@ const unpin = async ($: EngineInterface, id: string): Promise<void> => {
   await changePins($, pins => removePin(pins, id))
 }
 
-/** 체크 토글 → atom과 M4 store 키에 같이 쓴다. */
+/** 체크 토글 → store 기준으로 갱신해 M4 store 키와 atom에 같이 쓴다. */
 const toggle = async ($: EngineInterface, id: string): Promise<void> => {
-  const next = await update($, tasksAtom, tasks => toggleTask(tasks, id))
-  await $.store.set(tasksKey(await pidOf($)), next)
+  const run = taskWriteQueue.then(async () => {
+    const pid = await pidOf($)
+    const next = toggleTask(toTasks(await $.store.get(tasksKey(pid))), id)
+    await $.store.set(tasksKey(pid), next)
+    await update($, tasksAtom, () => next)
+  })
+  taskWriteQueue = run.catch(() => undefined)
+  await run
 }
 
 /** 사용량 상태를 갱신하고 임계치 이상 항목을 원인별 세션당 1회 toast한다. */
@@ -382,7 +409,11 @@ const gateLines = (lang: Lang, gate: GateView): string[] => {
  */
 export const registerPanel = (on: On): void => {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    await init($)
+    try {
+      await init($)
+    } catch {
+      // 초기화 실패가 같은 플러그인의 뒤쪽 session.start 훅을 막지 않게 한다.
+    }
     return next(e)
   })
 

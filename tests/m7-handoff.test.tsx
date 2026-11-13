@@ -5,6 +5,7 @@ import {
   buildForkPrompt,
   formatStamp,
   handoffFileName,
+  isHandoffPath,
   parseHandoffArgs,
   shouldTrigger,
   summarize,
@@ -67,6 +68,14 @@ describe('handoff 순수 로직', () => {
 
   test('요약은 앞 300자', () => {
     expect(summarize(`  ${'가'.repeat(400)}`)).toHaveLength(300)
+  })
+
+  test('isHandoffPath는 프로젝트 handoff 폴더의 .md만 허용한다', () => {
+    expect(isHandoffPath('C:/proj', 'C:/proj/.claude/takgon/handoff/20261012-0905.md')).toBe(true)
+    expect(isHandoffPath('C:\\proj\\', 'c:\\PROJ\\.claude\\takgon\\handoff\\note.MD')).toBe(true)
+    expect(isHandoffPath('C:/proj', 'C:/proj/.claude/takgon/handoff/../secret.md')).toBe(false)
+    expect(isHandoffPath('C:/proj', 'C:/other/.claude/takgon/handoff/20261012-0905.md')).toBe(false)
+    expect(isHandoffPath('C:/proj', 'C:/proj/.claude/takgon/handoff/note.txt')).toBe(false)
   })
 })
 
@@ -257,6 +266,21 @@ describe('자동 트리거', () => {
     const out = await $.command.run({ command: 'tk-handoff', args: '', ...RUN })
     expect(out.text).toContain('nothing-to-fork')
   })
+
+  test('자동 fork가 실패하면 다음 답변 턴에 재시도하고, 3번 실패 뒤에는 멈춘다', async ($, on) => {
+    const world = engine(on)
+    world.isForkOk.value = false
+    const clock = mock.clock(on)
+    await $.session.start(START)
+    world.percent.value = 90
+
+    for (let i = 0; i < 4; i += 1) {
+      await $.turn.complete(TURN)
+      await clock.settle()
+    }
+
+    expect(world.forks).toHaveLength(3)
+  })
 })
 
 describe('임계치 설정', () => {
@@ -318,6 +342,19 @@ describe('수동 실행과 load', () => {
     world.files.delete(path)
     const out = await $.command.run({ command: 'tk-handoff', args: 'load', ...RUN })
     expect(out.text).toContain(path)
+  })
+
+  test('store에 프로젝트 밖 경로가 들어 있으면 /tk-handoff load가 missing으로 거부한다', async ($, on) => {
+    const outside = 'C:/other/secret.md'
+    const world = engine(on, { 'p/b1a59c26/m7/latest': { path: outside, summary: '외부', createdAt: 1 } })
+    world.files.set(outside, '민감 정보')
+    mock.clock(on)
+    await $.session.start(START)
+
+    const out = await $.command.run({ command: 'tk-handoff', args: 'load', ...RUN })
+    expect(out.text).toContain('찾을 수 없습니다')
+    expect(out.text).toContain(outside)
+    expect(world.toasts.join('\n')).not.toContain('/tk-handoff load')
   })
 })
 

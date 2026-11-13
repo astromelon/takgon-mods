@@ -5,6 +5,7 @@
  * `$`를 받지 않으므로 단위 테스트로 직접 검증한다.
  */
 import type { EditTarget, Lang } from '../../types'
+import { fenceFor } from '../shared/text'
 import { tr } from './messages'
 
 /** 발췌 상한(문자). */
@@ -127,7 +128,8 @@ export const judgeEdit = (text: string, oldString: string, start: number, end: n
     return { isAllowed: false, reason: 'not-found' }
   }
   // 줄 번호는 직전 매치 위치부터 이어서 센다(매치마다 처음부터 세면 큰 파일에서 O(n·m)).
-  const needleLines = countNewlines(needle)
+  // 끝 줄바꿈은 그 줄 자체를 고르며 같이 잡은 것이므로 다음 줄까지 걸친 것으로 보지 않는다.
+  const needleLines = Math.max(0, countNewlines(needle) - (needle.endsWith('\n') ? 1 : 0))
   let matches = 0
   let line = 1
   let scanned = 0
@@ -148,12 +150,6 @@ export const lineDelta = (oldString: string, newString: string, matches: number)
   (countNewlines(newString.replace(/\r\n/g, '\n')) - countNewlines(oldString.replace(/\r\n/g, '\n'))) *
   matches
 
-/** 발췌 안의 백틱보다 긴 코드 펜스. */
-const fenceFor = (text: string): string => {
-  const longest = Math.max(2, ...(text.match(/`+/g) ?? []).map(run => run.length))
-  return '`'.repeat(longest + 1)
-}
-
 /** `/edit` 출력용 한 줄 요약. */
 export const summarizeTarget = (lang: Lang, target: EditTarget): string => {
   if (target.kind === 'dom') {
@@ -169,10 +165,11 @@ export const summarizeTarget = (lang: Lang, target: EditTarget): string => {
 export const describeForModel = (lang: Lang, target: EditTarget): string => {
   if (target.kind === 'dom') {
     const style = Object.entries(target.computedStyle)
-      .map(([name, value]) => `${name}: ${value}`)
+      .map(([name, value]) => `${name}: ${value.slice(0, 200)}`)
       .join('\n')
       .slice(0, STYLE_MAX)
-    const body = tr(lang, 'edit.ctx.dom', { url: target.url, selector: target.selector, style })
+    const fence = fenceFor(style)
+    const body = tr(lang, 'edit.ctx.dom', { url: target.url, selector: target.selector, fence, style })
     return target.screenshot === undefined
       ? body
       : `${body}\n${tr(lang, 'edit.ctx.screenshot', { path: target.screenshot })}`

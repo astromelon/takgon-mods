@@ -228,6 +228,34 @@ describe('M6 명령·패널', () => {
     }
   })
 
+  test('세션 시작 뒤 다른 세션이 store에 추가한 핀이 /pin 실행 후에도 남는다', async ($, on) => {
+    engine(on)
+    const key = `p/${PID}/m6/pins`
+    const data = new Map<string, unknown>([
+      [key, [{ id: 'p0', text: '기존 핀', createdAt: 1 }]],
+    ])
+    on('store.get', ($, e) => ({ value: data.get(e.key) }))
+    on('store.set', ($, e) => {
+      data.set(e.key, e.value)
+      return { value: undefined }
+    })
+    on('store.delete', ($, e) => {
+      data.delete(e.key)
+      return { value: undefined }
+    })
+    on('store.keys', () => ({ value: [...data.keys()] }))
+    await $.session.start(START)
+
+    data.set(key, [
+      { id: 'p0', text: '기존 핀', createdAt: 1 },
+      { id: 'other', text: '다른 세션 핀', createdAt: 2 },
+    ])
+    await $.command.run(run('pin', '새 핀'))
+
+    const saved = data.get(key) as Array<{ text: string }>
+    expect(saved.map(one => one.text)).toEqual(['기존 핀', '다른 세션 핀', '새 핀'])
+  })
+
   test('/pin은 직전 응답이 없으면 안내만 한다', async ($, on) => {
     engine(on)
     on('session.messages', () => ({ value: [{ role: 'user', text: '질문', toolUses: [] }] }))

@@ -67,7 +67,11 @@ export const parseNextSteps = (text: string): NextStep[] => {
     if (raw === null || typeof raw !== 'object' || typeof raw.text !== 'string') {
       continue
     }
-    const one = raw.text.trim().slice(0, MAX_TASK_TEXT)
+    const one = raw.text
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, MAX_TASK_TEXT)
     if (one === '') {
       continue
     }

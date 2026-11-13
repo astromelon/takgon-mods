@@ -47,6 +47,7 @@ describe('composer 순수 로직', () => {
     expect(parseNextSteps('[{"text":"  "}, 3, {"text":"x","kind":"bogus"}]')).toEqual([
       { text: 'x', kind: 'checkbox' },
     ])
+    expect(parseNextSteps('[{"text":"a\\nb\\u0007c"}]')).toEqual([{ text: 'a b c', kind: 'checkbox' }])
   })
 
   test('병합은 같은 text(공백·대소문자 무시)를 빼고, 미완료 우선 최근 20개만 남긴다', () => {
@@ -132,7 +133,7 @@ const BAND = {
 const COMPOSER = { wait: false, origin: { kind: 'composer' } } as const
 
 type World = {
-  submitted: { text: string; origin: string }[]
+  submitted: { text: string; origin: string; asUser?: boolean }[]
   forks: string[]
   completes: number
   asks: { question: string; options: readonly string[] }[]
@@ -181,7 +182,11 @@ const engine = (
   })
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('prompt.submit', ($, e) => {
-    world.submitted.push({ text: e.text, origin: e.origin.kind })
+    world.submitted.push({
+      text: e.text,
+      origin: e.origin.kind,
+      asUser: e.origin.kind === 'plugin' ? e.origin.asUser : undefined,
+    })
     return { text: e.text }
   })
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
@@ -221,6 +226,39 @@ const TOOL_TURN: SessionMessage[] = [
   { role: 'assistant', text: 'done', toolUses: [] },
 ]
 
+/** 그려진 트리 노드 중 판정에 쓰는 부분. */
+type DrawnNode = { text?: string; part?: { plugin?: string }; children?: readonly unknown[] }
+
+/** 트리에서 takgon-mods가 그린 부분(`part.plugin`)을 찾는다. 부분 표시가 없는 엔진이면 트리 자체. */
+const ownPart = (node: unknown): DrawnNode | undefined => {
+  const root = node as DrawnNode | undefined
+  const visit = (one: DrawnNode | null | undefined): DrawnNode | undefined => {
+    if (one === null || one === undefined || typeof one !== 'object') {
+      return undefined
+    }
+    if (one.part?.plugin === 'takgon-mods') {
+      return one
+    }
+    for (const child of one.children ?? []) {
+      const found = visit(child as DrawnNode)
+      if (found !== undefined) {
+        return found
+      }
+    }
+    return undefined
+  }
+  return visit(root) ?? root
+}
+
+/** 노드 아래 글자를 이어 붙인다(`find` 결과가 아닌 하위 노드에는 `text`가 없다). */
+const textOf = (node: unknown): string => {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node)
+  }
+  const one = node as DrawnNode | null | undefined
+  return (one?.children ?? []).map(textOf).join('')
+}
+
 describe('AbovePrompt band', () => {
   test('표시할 것이 없거나 설문 중이면 엔진 band를 그린다', async ($, on) => {
     engine(on, { [TASKS_KEY]: [{ id: 'a', text: '할 일', kind: 'checkbox', isDone: false, createdAt: 1 }] })
@@ -246,12 +284,19 @@ describe('AbovePrompt band', () => {
     engine(on)
     // M5가 채우는 pr state를 엔진 자리에서 답한다.
     const pr = { number: 12, url: 'u', reviewDecision: 'APPROVED', checks: 'failure' }
-    on('state.get', ($, e, next) => (e.key === 'pr' ? { value: { value: pr, version: 1 } } : next(e)))
+    // 세션 시작 뒤 읽기에만 답한다. 시작 중에도 답하면 M5의 `update(pr)`가 매번 "다른 쓰기가 끼었다"로 보고 재시도 상한에서
+    // 실패해(2.1.323의 update 버전 비교) session.start 훅이 실패하고, 같은 플러그인의 뒤쪽 초기화가 건너뛰어진다.
+    let isStarted = false
+    on('state.get', ($, e, next) => (isStarted && e.key === 'pr' ? { value: { value: pr, version: 1 } } : next(e)))
     await $.session.start(START)
+    isStarted = true
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ plugin: 'takgon-mods', surface, component: 'AbovePrompt', props: BAND })
       expect((await ui.find({ key: 'pr-badge' }))?.text).toBe('PR #12 · 승인됨 · 체크 실패')
-      expect(await ui.find({ text: 'engine-band' })).toBeUndefined()
+      // 배지를 그리면 next(엔진 band)를 부르지 않는다: takgon-mods 부분에 engine-band가 없어야 한다.
+      // 2.1.323부터 테스트 킷은 테스트의 ui.render 훅을 별도 부분(`part.plugin: 'test'`)으로 band에 나란히 두므로
+      // 트리 전체가 아니라 takgon-mods 부분만 본다(2.1.296은 부분 표시가 없어 트리 전체가 곧 플러그인 부분).
+      expect(textOf(ownPart(await ui.find({ type: 'Box' })))).toBe('PR #12 · 승인됨 · 체크 실패')
     }
   })
 
@@ -268,11 +313,43 @@ describe('AbovePrompt band', () => {
 
     const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
     await ui.press({ key: 'task-t2' })
-    expect(world.submitted).toEqual([{ text: '작업 2', origin: 'plugin' }])
+    expect(world.submitted).toEqual([{ text: '작업 2', origin: 'plugin', asUser: undefined }])
 
     await ui.press({ key: 'check-t4' })
     expect(await ui.find({ key: 'task-t4' })).toBeUndefined()
     expect(await ui.find({ key: 'task-t1' })).toBeDefined()
+  })
+
+  test('할 일 토글 시 다른 세션이 store에 추가한 할 일이 유실되지 않는다', async ($, on) => {
+    const data = new Map<string, unknown>([
+      [TASKS_KEY, [task('t1', '기존 일', false, 1)]],
+    ])
+    on('session.start', ($, e) => ({ cwd: e.cwd }))
+    on('session.root', () => ({ value: 'C:/proj' }))
+    on('command.register', ($, e) => ({ value: { command: e.name } }))
+    on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+      const { Text } = $.ui.resolve(e)
+      return <Text>engine-band</Text>
+    })
+    on('store.get', ($, e) => ({ value: data.get(e.key) }))
+    on('store.set', ($, e) => {
+      data.set(e.key, e.value)
+      return { value: undefined }
+    })
+    on('store.delete', ($, e) => {
+      data.delete(e.key)
+      return { value: undefined }
+    })
+    on('store.keys', () => ({ value: [...data.keys()] }))
+    await $.session.start(START)
+
+    data.set(TASKS_KEY, [task('t1', '기존 일', false, 1), task('ext', '외부 할 일', false, 2)])
+    const ui = await $.ui.mount({ plugin: 'takgon-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    await ui.press({ key: 'check-t1' })
+
+    const saved = data.get(TASKS_KEY) as TaskItem[]
+    expect(saved.find(one => one.id === 't1')?.isDone).toBe(true)
+    expect(saved.find(one => one.id === 'ext')?.text).toBe('외부 할 일')
   })
 })
 

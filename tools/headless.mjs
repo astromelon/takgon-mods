@@ -14,8 +14,8 @@
  * 가르지 말고 `status`·`error`를 함께 본다.
  * playwright를 못 찾으면 exit code 2 + `{ ok:false, status:0, consoleErrors:[], error:'playwright-missing' }`.
  */
-import { mkdirSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { mkdirSync, readdirSync, unlinkSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
 
 /** 수집할 computed style 속성(색·폰트·크기·여백·배치). */
 const STYLE_PROPS = [
@@ -44,6 +44,9 @@ const STYLE_PROPS = [
 ]
 
 const MAX_ERRORS = 50
+const MAX_SHOTS = 40
+/** 이 스크립트가 만드는 스크린샷 파일명(`timestamp()` 17자리, 요소 스크린샷은 `-element`). */
+const SHOT_NAME = /^\d{17}(-element)?\.png$/
 const DEFAULT_WAIT_MS = 3000
 const NAV_TIMEOUT_MS = 20000
 
@@ -152,6 +155,23 @@ const main = async () => {
           elementScreenshot = undefined
         }
         result.element = { selector, computedStyle, screenshot: elementScreenshot }
+      }
+    }
+
+    // 오래된 스크린샷 정리: --out을 명시했을 때만, 이 스크립트가 만든 타임스탬프 이름의 png만, 이번 실행 파일은 빼고.
+    if (args.out) {
+      try {
+        const current = new Set([basename(screenshot), `${stamp}-element.png`])
+        const old = readdirSync(outDir)
+          .filter(name => SHOT_NAME.test(name) && !current.has(name))
+          .sort()
+          .reverse()
+          .slice(MAX_SHOTS * 2)
+        for (const name of old) {
+          unlinkSync(join(outDir, name))
+        }
+      } catch {
+        // 정리는 부가 작업이라 실패해도 결과에는 영향을 주지 않는다.
       }
     }
 

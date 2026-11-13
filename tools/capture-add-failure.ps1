@@ -154,8 +154,14 @@ if ($exe -like '*.ps1') {
 if (-not (Test-Path -LiteralPath $BaseDir)) { New-Item -ItemType Directory -Path $BaseDir -Force | Out-Null }
 $BaseDir = (Resolve-Path -LiteralPath $BaseDir).ProviderPath.TrimEnd('\')
 $realClaude = [System.IO.Path]::GetFullPath((Join-Path $env:USERPROFILE '.claude')).TrimEnd('\')
-if ($BaseDir -eq $realClaude -or $BaseDir.StartsWith($realClaude + '\')) {
+if ($BaseDir -eq $realClaude -or $BaseDir.StartsWith($realClaude + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "BaseDir 가 실제 ~/.claude 아래다. 거부: $BaseDir"
+}
+if ($env:CLAUDE_CONFIG_DIR) {
+  $cfgClaude = [System.IO.Path]::GetFullPath($env:CLAUDE_CONFIG_DIR).TrimEnd('\')
+  if ($BaseDir -eq $cfgClaude -or $BaseDir.StartsWith($cfgClaude + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "BaseDir 가 CLAUDE_CONFIG_DIR 아래다. 거부: $BaseDir"
+  }
 }
 
 Write-Host "claude        : $exe"

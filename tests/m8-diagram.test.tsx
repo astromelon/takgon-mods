@@ -167,6 +167,24 @@ describe('turn.complete 사전 렌더', () => {
     expect(world.toasts).toEqual([])
   })
 
+  test('svg·png 캐시가 있어도 .mmd 원본 내용이 다르면 mmdc를 다시 실행한다', async ($, on) => {
+    const world = engine(on, 'ok')
+    world.files.set(`${DIR}/${HASH}.svg`, '<svg>stale</svg>')
+    world.files.set(`${DIR}/${HASH}.png`, 'STALE')
+    world.files.set(`${DIR}/${HASH}.mmd`, 'graph TD\n  OLD-->CODE')
+    mock.store(on)
+    await $.session.start(START)
+
+    await $.turn.complete(complete(ANSWER))
+    await clock.settle()
+
+    expect(world.files.get(`${DIR}/${HASH}.mmd`)).toBe(FLOW)
+    expect(world.runs).toEqual([
+      ['mmdc', '-i', `${DIR}/${HASH}.mmd`, '-o', `${DIR}/${HASH}.svg`],
+      ['mmdc', '-i', `${DIR}/${HASH}.mmd`, '-o', `${DIR}/${HASH}.png`],
+    ])
+  })
+
   test('mmdc 실행 불가: cmd /c로 1회 재시도하고 toast는 원인별 1회', async ($, on) => {
     const world = engine(on, 'missing')
     mock.store(on)

@@ -59,7 +59,7 @@ Claude Code용 개인 생산성 mods 플러그인. 모듈 8개를 한 플러그�
 - 목록 항목은 한 줄에 경로 하나(백틱 가능), 디렉터리는 `/`로 끝낸다. 저장소 밖 경로와 `.git/` 안(계획서 자체)은 막지 않는다.
 - 계획서 없음, `# 브랜치` 없음, 브랜치 불일치, git 실행 실패면 꺼진다. 상태는 `/edit`(인자 없이)의 마지막 줄에 나온다.
 - `/edit <path>:<start>-<end>` 범위와 함께 켜져 있으면 계획서 범위를 먼저 보고, 이어서 행 범위를 본다. `/mods edit off`로 둘 다 끈다.
-- 한계: Bash·NotebookEdit 경유 수정은 막지 못한다. Edit·Write마다 git을 2번(병렬) 실행한다.
+- 한계: 실수 방지 장치이며 보안 경계가 아니다. Bash 경유 수정, 이 엔진에 tool.call 매처가 없는 NotebookEdit, 심볼릭 링크로 다른 곳을 가리키는 경로는 막지 못한다. `.git/` 안(계획서 자체)은 지휘 세션이 `[Review Feedback]`을 써야 하므로 막지 않는다. Edit·Write마다 git을 2번(병렬) 실행한다.
 
 **게이트 탭 (panel 모듈)**
 - `/panel gate`(또는 패널 6번 탭)에서 Claude·agy·Codex 게이트 훅 로그(`~/.claude/hooks/node4-approval-gate.log` 등, 회전 파일

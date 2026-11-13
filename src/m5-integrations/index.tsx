@@ -14,7 +14,7 @@ import {
   replaceIssue,
   toIssueList,
 } from './command'
-import { GH_PR_VIEW, GH_TIMEOUT_MS, classifyGhExit, parsePrView, shouldRefresh } from './github'
+import { GH_PR_VIEW, GH_TIMEOUT_MS, classifyGhExit, isTimedOut, parsePrView, shouldRefresh } from './github'
 import type { GhFailure } from './github'
 import {
   GIT_REMOTE_URL,
@@ -140,13 +140,16 @@ const forgeOf = async ($: EngineInterface): Promise<Forge | null> => {
 const githubStatus = async (
   $: EngineInterface,
 ): Promise<{ pr: PrStatus | null; failure: GhFailure | null }> => {
+  const startedAt = await $.clock.now()
   try {
     const run = await $.process.run(GH_PR_VIEW, { timeoutMs: GH_TIMEOUT_MS })
     return run.exitCode === 0
       ? { pr: parsePrView(run.stdout), failure: null }
       : { pr: null, failure: classifyGhExit(run.exitCode, run.stderr) }
   } catch {
-    return { pr: null, failure: 'gh-missing' }
+    return isTimedOut((await $.clock.now()) - startedAt, GH_TIMEOUT_MS)
+      ? { pr: null, failure: null }
+      : { pr: null, failure: 'gh-missing' }
   }
 }
 
@@ -155,6 +158,7 @@ const gitlabStatus = async (
   $: EngineInterface,
 ): Promise<{ pr: PrStatus | null; failure: GlabFailure | null }> => {
   let mr: PrStatus | null
+  const startedAt = await $.clock.now()
   try {
     const run = await $.process.run(GLAB_MR_VIEW, { timeoutMs: GH_TIMEOUT_MS })
     if (run.exitCode !== 0) {
@@ -162,7 +166,9 @@ const gitlabStatus = async (
     }
     mr = parseMrView(run.stdout)
   } catch {
-    return { pr: null, failure: 'glab-missing' }
+    return isTimedOut((await $.clock.now()) - startedAt, GH_TIMEOUT_MS)
+      ? { pr: null, failure: null }
+      : { pr: null, failure: 'glab-missing' }
   }
   if (mr === null) {
     return { pr: null, failure: null }
@@ -404,18 +410,22 @@ const restore = async ($: EngineInterface): Promise<void> => {
  * state를 비우고 `session.start`를 다시 보내지 않으므로(폴링 타이머는 남는다), 훅에 처음 들어올 때 채운다.
  */
 const ensureRestored = async ($: EngineInterface): Promise<void> => {
-  if ((await read($, restoredAtom)).includes('m5')) {
-    return
-  }
-  await update($, restoredAtom, list => (list.includes('m5') ? list : [...list, 'm5']))
   try {
-    await restore($)
+    if ((await read($, restoredAtom)).includes('m5')) {
+      return
+    }
+    await update($, restoredAtom, list => (list.includes('m5') ? list : [...list, 'm5']))
+    try {
+      await restore($)
+    } catch {
+      // 훅 실패로 번지면 같은 이벤트의 뒤쪽 훅이 건너뛰어지므로 삼키고, 다음 진입에서 다시 시도한다.
+      await update($, restoredAtom, list => list.filter(one => one !== 'm5')).catch(() => undefined)
+      return
+    }
+    $.clock.after(0, () => { getStatus($).catch(() => undefined) })
   } catch {
-    // 훅 실패로 번지면 같은 이벤트의 뒤쪽 훅이 건너뛰어지므로 삼키고, 다음 진입에서 다시 시도한다.
-    await update($, restoredAtom, list => list.filter(one => one !== 'm5'))
-    return
+    // restoredAtom 읽기·갱신 실패도 훅 밖으로 내보내지 않는다.
   }
-  $.clock.after(0, () => void getStatus($))
 }
 
 /** 세션 초기화: 명령 등록, 상태 복원, PR 폴링 시작. */
@@ -444,8 +454,8 @@ const init = async ($: EngineInterface): Promise<void> => {
   poller?.cancel()
   lastRefreshAt = null
   // 첫 갱신은 세션 시작을 막지 않도록 타이머로 미룬다(gh 응답 최대 15초).
-  $.clock.after(0, () => void getStatus($))
-  poller = $.clock.every(POLL_MS, () => void getStatus($))
+  $.clock.after(0, () => { getStatus($).catch(() => undefined) })
+  poller = $.clock.every(POLL_MS, () => { getStatus($).catch(() => undefined) })
 }
 
 /**
@@ -475,7 +485,7 @@ export const registerIntegrations = (on: On): void => {
       shouldRefresh(await $.clock.now(), lastRefreshAt, TURN_GAP_MS)
     ) {
       lastRefreshAt = await $.clock.now()
-      $.clock.after(0, () => void getStatus($))
+      $.clock.after(0, () => { getStatus($).catch(() => undefined) })
     }
     return result
   })

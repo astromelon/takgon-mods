@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { CommandSpec, EngineInterface, On } from 'claude-code'
 
-import type { BrowserInfo, CommandRegistration } from '../../types'
+import type { BrowserInfo, CommandRegistration, Lang } from '../../types'
 import { projectId } from '../shared/keys'
 import { OUTPUT_GITIGNORE, commandsKey, markNotified, outputDir, refusalReason, registerCause, toCommandMap } from '../shared/settings'
 import { t } from '../shared/i18n'
@@ -173,12 +173,21 @@ const refresh = async ($: EngineInterface): Promise<void> => {
  */
 export const registerBrowser = (on: On): void => {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    const lang = await read($, langAtom)
-    await registerCommand($, {
-      name: 'browse',
-      description: tr(lang, 'cmd.description'),
-      argumentHint: '[url]',
-    })
+    try {
+      let lang: Lang = 'ko'
+      try {
+        lang = await read($, langAtom)
+      } catch {
+        // 기본 언어로 진행한다.
+      }
+      await registerCommand($, {
+        name: 'browse',
+        description: tr(lang, 'cmd.description'),
+        argumentHint: '[url]',
+      })
+    } catch {
+      // 초기화 실패가 같은 플러그인의 뒤쪽 session.start 훅을 막지 않게 한다.
+    }
     return next(e)
   })
 

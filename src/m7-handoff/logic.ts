@@ -2,7 +2,7 @@
  * M7 순수 로직: 트리거 판정, 파일명·시각 포맷, fork 프롬프트 조립. `$`를 쓰지 않는다.
  */
 import type { HandoffInfo, IssueItem, Lang, Pin, PrStatus, TaskItem } from '../../types'
-import { parsePercent, toPercent } from '../shared/settings'
+import { outputDir, parsePercent, toPercent } from '../shared/settings'
 import { tr } from './messages'
 
 /** 자동 생성 임계치(컨텍스트 사용률 %). M6 경고(80%)보다 먼저 발동한다. */
@@ -117,4 +117,14 @@ export const parseHandoffArgs = (args: string): HandoffAction => {
     return number === null ? 'usage' : { kind: 'threshold', value: number }
   }
   return (word === 'show' || word === 'load') && value === undefined ? word : 'usage'
+}
+
+/** 경로가 `{root}/.claude/takgon/handoff/*.md` 안인지 확인한다(`..` 순회 차단). */
+export const isHandoffPath = (root: string, path: string): boolean => {
+  const normalized = path.replace(/\\/g, '/').toLowerCase()
+  if (normalized.split('/').includes('..')) {
+    return false
+  }
+  const prefix = `${outputDir(root).toLowerCase()}/handoff/`
+  return normalized.startsWith(prefix) && normalized.endsWith('.md')
 }

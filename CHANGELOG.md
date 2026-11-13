@@ -5,6 +5,28 @@
 
 ## [Unreleased]
 
+### Security
+- M2·M3: 브라우저 콘솔 에러와 DOM `computed style`을 프롬프트에 붙일 때 페이지 출력이 지시로 해석되지 않도록 안내 문구와 동적 길이 코드 펜스(`fenceFor`)로 감싸고 길이를 제한한다(에러 500자·스타일 값 200자).
+- M4: Next-steps 제출이 사용자 발화(`asUser: true`)로 위장되지 않게 플러그인 메시지로 보내고, 제안 문구의 제어문자를 공백으로 치환한다.
+- M7: 인수인계 파일 경로가 현재 프로젝트 `.claude/takgon/handoff/*.md` 안인지 검증(`..` 순회 차단)해, store에 프로젝트 밖 경로가 있어도 복원·안내·첨부를 거부한다.
+- `tools/capture-add-failure.ps1`: `-BaseDir`의 `~/.claude` 하위 검사를 대소문자 무관 비교로 바꾸고, `CLAUDE_CONFIG_DIR` 환경변수가 지정된 경우 그 아래 경로도 거부한다.
+
+### Fixed
+- M4·M6: 할 일·핀을 바꿀 때 `$.store`에서 최신 목록을 읽어 갱신한 뒤 state를 맞추도록 바꿔, 다른 세션에서 추가한 항목이 유실되던 문제를 고쳤다.
+- M3: `/edit <경로>:<시작>-<끝>`으로 지정한 파일이 이후 수정되면 다음 프롬프트에 최신 파일 발췌를 다시 읽어 붙인다.
+- M3: `judgeEdit`에서 `old_string`이 끝 줄바꿈(`\n`)을 포함할 때 끝 행이 한 줄 더 잡혀 범위 밖으로 거부되던 문제를 고쳤다.
+- M7: 컨텍스트 임계치 자동 인수인계가 실패하면 포기하지 않고 다음 답변 턴에 최대 3회까지 재시도한다.
+- M5: `gh`/`glab` 실행이 시간 초과로 거부되면 미설치 toast 대신 조용히 숨기고, `glab` 오류 문구에 포함된 `401`만으로 인증 실패로 오인하던 문제를 고쳤다(타이머 콜백 거부도 삼킨다).
+- M2·M3·M4·M5·M6: `session.start`의 `next` 전 초기화와 `ensureRestored`를 예외 격리해, 한 모듈의 실패가 같은 플러그인의 뒤쪽 훅을 건너뛰게 하던 문제를 고쳤다.
+- M8: 다이어그램 캐시(`.svg`·`.png`)를 재사용하기 전에 `.mmd` 원본이 현재 코드와 같은지 비교해, 다르면 `mmdc`를 다시 실행한다.
+- `tools/headless.mjs`: 스크린샷 저장 뒤 출력 폴더(`--out`을 준 경우만)에서 이 스크립트가 만든 타임스탬프 이름의 `.png`를 최근 80개(40쌍)만 남기고 정리한다. 이번 실행의 파일은 지우지 않는다.
+- M3: Playwright 미설치 안내 문구(`edit.playwrightMissing`)를 M2와 같이 `takgon-mods` 폴더 내 로컬 설치(`npm install && npx playwright install chromium`, 전역 설치 미인식) 안내로 맞췄다.
+
+### Changed
+- `tools/e2e/harness.py`: `StoreGuard`가 store를 읽고 쓰는 사이에 파일이 바뀌면 최대 3회 다시 읽어 동시 변경을 보존한다.
+- CI(`.github/workflows/ci.yml`, `probe-classic-experiment.yml`)의 GitHub Actions(`checkout`, `setup-node`, `setup-python`)를 커밋 SHA로 고정했다.
+- `tests/m4-composer.test.tsx`: 2.1.323 테스트 킷이 테스트의 `ui.render` 훅을 별도 부분으로 나란히 두고 `update`가 버전 비교 재시도를 해 고정 `state.get` 스텁과 충돌하던 점을 반영해 배지 테스트를 고쳤다.
+
 ## [0.4.11] - 2026-11-10
 
 ### Added

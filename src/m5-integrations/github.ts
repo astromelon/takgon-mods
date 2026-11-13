@@ -86,3 +86,6 @@ export const classifyGhExit = (exitCode: number, stderr: string): GhFailure =>
 /** 직전 갱신 후 `minGapMs` 이내면 갱신을 건너뛴다. */
 export const shouldRefresh = (now: number, lastAt: number | null, minGapMs: number): boolean =>
   lastAt === null || now - lastAt >= minGapMs
+
+/** 실행 거부 시 걸린 시간이 제한에 가까우면 시간 초과로 본다. */
+export const isTimedOut = (elapsedMs: number, timeoutMs: number): boolean => elapsedMs >= timeoutMs * 0.9

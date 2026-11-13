@@ -18,7 +18,7 @@ import time
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import pyte
 import winpty
@@ -342,24 +342,48 @@ class StoreGuard:
         with open(self.path, encoding="utf-8") as f:
             return json.load(f)
 
-    def _save(self, data: dict[str, object]) -> None:
+    def _mtime_ns(self) -> int | None:
+        if not self.path:
+            return None
+        try:
+            return self.path.stat().st_mtime_ns
+        except FileNotFoundError:
+            return None
+
+    def _update(self, mutate: Callable[[dict[str, object]], None]) -> None:
         if not self.path:
             return
         # 제자리에 쓰다 끊기면 실제 store가 깨지므로, 같은 폴더의 임시 파일에 다 쓴 뒤 한 번에 교체한다.
+        # 읽은 뒤 다른 프로세스가 파일을 바꿨으면 최대 3회 다시 읽어 그 변경을 보존한다.
         tmp = self.path.with_name(f"{self.path.name}.{os.getpid()}.tmp")
-        try:
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
-            os.replace(tmp, self.path)
-        finally:
-            tmp.unlink(missing_ok=True)
+        for attempt in range(3):
+            before = self._mtime_ns()
+            data = self._load()
+            mutate(data)
+            try:
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False)
+                after = self._mtime_ns()
+                if after != before and attempt < 2:
+                    continue
+                if after != before:
+                    print(
+                        f"경고: store 파일이 동시 수정되어 마지막 시도로 교체합니다: {self.path}",
+                        file=sys.stderr,
+                    )
+                os.replace(tmp, self.path)
+                return
+            finally:
+                tmp.unlink(missing_ok=True)
 
     def seed(self, key: str, value: object) -> None:
         if not self.path:
             return
-        data = self._load()
-        data[key] = value
-        self._save(data)
+
+        def mutate(data: dict[str, object]) -> None:
+            data[key] = value
+
+        self._update(mutate)
 
     def __enter__(self) -> "StoreGuard":
         if self.path and self.path.exists():
@@ -370,15 +394,17 @@ class StoreGuard:
     def __exit__(self, *exc: object) -> None:
         if not self.path or not self.path.exists():
             return
-        data = self._load()
-        for key in self.keys:
-            if key in self.saved:
-                data[key] = self.saved[key]
-            else:
-                data.pop(key, None)
-        for key in [k for k in data if any(k.startswith(f"p/{pid}/") for pid in self.pids)]:
-            del data[key]
-        self._save(data)
+
+        def mutate(data: dict[str, object]) -> None:
+            for key in self.keys:
+                if key in self.saved:
+                    data[key] = self.saved[key]
+                else:
+                    data.pop(key, None)
+            for key in [k for k in data if any(k.startswith(f"p/{pid}/") for pid in self.pids)]:
+                del data[key]
+
+        self._update(mutate)
 
 
 class DevServer:

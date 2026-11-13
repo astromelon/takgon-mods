@@ -7,6 +7,7 @@ import { addLinked, parseIssueArgs, removeLinked } from '../src/m5-integrations/
 import {
   aggregateChecks,
   classifyGhExit,
+  isTimedOut,
   parsePrView,
   shouldRefresh,
 } from '../src/m5-integrations/github'
@@ -74,10 +75,13 @@ describe('GitHub 해석(순수)', () => {
     )
   })
 
-  test('갱신 간격 판정', () => {
+  test('갱신 간격·시간 초과 판정', () => {
     expect(shouldRefresh(5_000, null, 10_000)).toBe(true)
     expect(shouldRefresh(15_000, 10_000, 10_000)).toBe(false)
     expect(shouldRefresh(20_000, 10_000, 10_000)).toBe(true)
+    expect(isTimedOut(13_499, 15_000)).toBe(false)
+    expect(isTimedOut(13_500, 15_000)).toBe(true)
+    expect(isTimedOut(15_000, 15_000)).toBe(true)
   })
 })
 
@@ -136,6 +140,8 @@ describe('GitLab 해석(순수)', () => {
 
   test('glab 실패 분류', () => {
     expect(classifyGlabExit(1, 'ERROR: 401 Unauthorized. To authenticate, run glab auth login')).toBe('glab-auth')
+    expect(classifyGlabExit(1, 'HTTP 401 Unauthorized')).toBe('glab-auth')
+    expect(classifyGlabExit(1, 'branch fix-401 not found')).toBe('no-pr')
     expect(classifyGlabExit(1, 'no open merge request available for "main"')).toBe('no-pr')
   })
 })
