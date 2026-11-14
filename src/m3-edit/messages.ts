@@ -42,7 +42,8 @@ const ko = {
   'edit.deny.plan':
     '계획서 범위 밖 수정입니다: {path}\n' +
     '계획서 {plan} (브랜치 {branch}) 의 # 변경 대상 파일: {files}\n' +
-    '이 파일을 고쳐야 하면 계획서의 # 변경 대상 파일에 추가한 뒤 다시 시도하세요.',
+    '이 계획의 작업에 꼭 필요한 파일일 때만 계획서의 # 변경 대상 파일에 추가한 뒤 다시 시도하세요. ' +
+    '계획과 무관한 요청이면 계획서를 고치지 말고, 범위를 넓힐지 사용자에게 먼저 확인하세요.',
   'edit.plan.active': '계획서 범위 가드: 켜짐 (브랜치 {branch}, 대상 파일 {count}개)',
   'edit.plan.inactive': '계획서 범위 가드: 꺼짐',
 } as const
@@ -91,7 +92,8 @@ const en: Record<EditMessageKey, string> = {
   'edit.deny.plan':
     'Edit is outside the plan scope: {path}\n' +
     '# 변경 대상 파일 in {plan} (branch {branch}): {files}\n' +
-    'If this file must be changed, add it to # 변경 대상 파일 in the plan and retry.',
+    'Add it to # 변경 대상 파일 in the plan and retry only if the planned task needs it. ' +
+    'If the request is unrelated to the plan, do not edit the plan; ask the user first whether to widen the scope.',
   'edit.plan.active': 'Plan scope guard: on (branch {branch}, {count} target files)',
   'edit.plan.inactive': 'Plan scope guard: off',
 }

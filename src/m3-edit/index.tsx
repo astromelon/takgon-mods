@@ -66,6 +66,7 @@ const HEADLESS_TIMEOUT_MS = 90_000
 const GIT_TIMEOUT_MS = 5_000
 const REV_PARSE = ['git', 'rev-parse', '--show-toplevel', '--git-dir', '--git-path', 'ai-task.md'] as const
 const BRANCH = ['git', 'branch', '--show-current'] as const
+const CHECK_IGNORE = ['git', 'check-ignore', '-q', '--'] as const
 const PLAN_FILES_MAX = 20
 
 const isOn = async ($: EngineInterface): Promise<boolean> => (await read($, modulesAtom)).edit
@@ -126,6 +127,16 @@ const formatPlanFiles = (lang: Lang, files: readonly string[]): string => {
   return files.length > PLAN_FILES_MAX ? `${shown} …(+${files.length - PLAN_FILES_MAX})` : shown
 }
 
+/** 추적 중인 파일은 무시 패턴에 맞아도 false. */
+const isIgnored = async ($: EngineInterface, cwd: string, path: string): Promise<boolean> => {
+  try {
+    const res = await $.process.run([...CHECK_IGNORE, path], { cwd, timeoutMs: GIT_TIMEOUT_MS })
+    return res.exitCode === 0
+  } catch {
+    return false
+  }
+}
+
 /** 계획서 범위 가드가 켜져 있고 `filePath`가 허용 목록 밖이면 거부 사유를 돌려준다. */
 const planDeny = async ($: EngineInterface, filePath: string): Promise<string | undefined> => {
   const scope = await planScope($)
@@ -136,6 +147,9 @@ const planDeny = async ($: EngineInterface, filePath: string): Promise<string | 
   const path = resolvePath(root, filePath)
   const verdict = judgeScope({ top: scope.top, gitDir: scope.gitDir, filePath: path, files: scope.files })
   if (verdict.isAllowed) {
+    return undefined
+  }
+  if (await isIgnored($, scope.top, path)) {
     return undefined
   }
   const lang = await read($, langAtom)

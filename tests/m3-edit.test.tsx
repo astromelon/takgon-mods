@@ -478,21 +478,31 @@ const PLAN = '# 브랜치\nfeat/a\n\n# 변경 대상 파일\n- `src/a.ts`\n- `te
 
 const gitEngine = (
   on: On,
-  opts: { branch?: string; plan?: string; exitCode?: number } = {},
+  opts: {
+    branch?: string
+    plan?: string
+    exitCode?: number
+    ignored?: string[]
+    checkIgnoreExitCode?: number
+  } = {},
 ): (readonly string[])[] => {
-  const { branch = 'feat/a', plan, exitCode = 0 } = opts
+  const { branch = 'feat/a', plan, exitCode = 0, ignored = [], checkIgnoreExitCode } = opts
   const argvs: (readonly string[])[] = []
   on('process.run', ($, e) => {
     argvs.push(e.argv)
     let stdout = ''
+    let code = exitCode
     if (e.argv.join(' ') === 'git rev-parse --show-toplevel --git-dir --git-path ai-task.md') {
       stdout = 'C:/proj\n.git\n.git/ai-task.md\n'
     } else if (e.argv.join(' ') === 'git branch --show-current') {
       stdout = `${branch}\n`
+    } else if (e.argv.slice(0, 4).join(' ') === 'git check-ignore -q --') {
+      const target = e.argv[4] ?? ''
+      code = checkIgnoreExitCode ?? (ignored.includes(target) ? 0 : 1)
     }
     return {
       value: {
-        exitCode,
+        exitCode: code,
         stdout,
         stderr: '',
         isStdoutTruncated: false,
@@ -504,6 +514,7 @@ const gitEngine = (
     'C:/proj/src/a.ts': SOURCE,
     'C:/proj/src/b.ts': SOURCE,
     'C:/proj/tests/x.test.ts': SOURCE,
+    'C:/proj/docs/plan.md': SOURCE,
   }
   if (plan !== undefined) {
     files['C:/proj/.git/ai-task.md'] = plan
@@ -779,6 +790,83 @@ describe('계획서 범위 가드', () => {
     currentBranch = 'main'
     const inactiveText = (await edit($, '')).text ?? ''
     expect(inactiveText).toContain('꺼짐')
+  })
+
+  test('목록 밖이지만 git 무시 대상인 Write·Edit는 허용되고 실제 도구가 실행된다', async ($, on) => {
+    const ran = captureTools(on)
+    gitEngine(on, { branch: 'feat/a', plan: PLAN, ignored: ['C:/proj/docs/plan.md'] })
+    mock.store(on)
+    await $.session.start(START)
+
+    const editIgnored = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/docs/plan.md',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+    const writeIgnored = await $.tool.call({
+      tool: 'Write',
+      file_path: 'C:/proj/docs/plan.md',
+      content: 'all',
+    })
+
+    expect(editIgnored.deny).toBeUndefined()
+    expect(writeIgnored.deny).toBeUndefined()
+    expect(ran).toEqual(['C:/proj/docs/plan.md', 'write:C:/proj/docs/plan.md'])
+  })
+
+  test('목록 밖이고 무시 대상이 아니면 거부 사유에 사용자에게 확인 안내가 들어 있다', async ($, on) => {
+    const ran = captureTools(on)
+    gitEngine(on, { branch: 'feat/a', plan: PLAN, ignored: ['C:/proj/docs/plan.md'] })
+    mock.store(on)
+    await $.session.start(START)
+
+    const denied = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/b.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+
+    expect(denied.deny).toBeDefined()
+    expect(denied.deny).toContain('사용자에게')
+    expect(ran).toEqual([])
+  })
+
+  test('목록 안 파일 Edit에서는 check-ignore가 한 번도 실행되지 않는다', async ($, on) => {
+    const ran = captureTools(on)
+    const argvs = gitEngine(on, { branch: 'feat/a', plan: PLAN })
+    mock.store(on)
+    await $.session.start(START)
+
+    const res = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/src/a.ts',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+
+    expect(res.deny).toBeUndefined()
+    expect(ran).toEqual(['C:/proj/src/a.ts'])
+    expect(argvs.some(argv => argv.includes('check-ignore'))).toBe(false)
+  })
+
+  test('check-ignore가 128을 돌려주면 거부를 유지한다', async ($, on) => {
+    const ran = captureTools(on)
+    gitEngine(on, { branch: 'feat/a', plan: PLAN, checkIgnoreExitCode: 128 })
+    mock.store(on)
+    await $.session.start(START)
+
+    const denied = await $.tool.call({
+      tool: 'Edit',
+      file_path: 'C:/proj/docs/plan.md',
+      old_string: 'line1',
+      new_string: 'x',
+    })
+
+    expect(denied.deny).toBeDefined()
+    expect(denied.deny).toContain('사용자에게')
+    expect(ran).toEqual([])
   })
 })
 
