@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.4.14] - 2026-11-18
+
 ### Added
 - `plugin.json`에 `engines["claude-code"]: ">=2.1.323"`을 추가했다. 2.1.323 이상 엔진은 범위 밖이면 설치·업데이트·로드하지 않고, 2.1.322 이하는 이 키를 읽지 않는다. 하한인 2.1.323에서도 validate·test 206건·probe_catch·probe_clear_state가 통과했다.
 
