@@ -11,6 +11,7 @@ import {
   buildForkPrompt,
   formatStamp,
   formatTime,
+  handoffContext,
   handoffFileName,
   isHandoffPath,
   parseHandoffArgs,
@@ -261,7 +262,7 @@ const takePending = async ($: EngineInterface): Promise<string | null> => {
     return null
   }
   const text = await $.fs.read(info.path)
-  return text.trim() === '' ? null : text
+  return text.trim() === '' ? null : handoffContext(info.path, text)
 }
 
 /**

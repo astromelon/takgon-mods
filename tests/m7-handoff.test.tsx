@@ -4,6 +4,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import {
   buildForkPrompt,
   formatStamp,
+  handoffContext,
   handoffFileName,
   isHandoffPath,
   parseHandoffArgs,
@@ -76,6 +77,17 @@ describe('handoff 순수 로직', () => {
     expect(isHandoffPath('C:/proj', 'C:/proj/.claude/takgon/handoff/../secret.md')).toBe(false)
     expect(isHandoffPath('C:/proj', 'C:/other/.claude/takgon/handoff/20261012-0905.md')).toBe(false)
     expect(isHandoffPath('C:/proj', 'C:/proj/.claude/takgon/handoff/note.txt')).toBe(false)
+  })
+
+  test('handoffContext는 출처와 동적 길이 펜스로 본문을 감싸고 앞뒤 공백을 trim한다', () => {
+    const path = 'C:/proj/.claude/takgon/handoff/20261012-0905.md'
+    const out = handoffContext(path, '  \n```markdown\n## 목표\n```\n  ')
+    const lines = out.split('\n')
+    expect(lines[0]).toContain(path)
+    expect(lines[0]).toContain('/tk-handoff load')
+    expect(lines[2]).toBe('````')
+    expect(lines.at(-1)).toBe('````')
+    expect(lines.slice(3, -1).join('\n')).toBe('```markdown\n## 목표\n```')
   })
 })
 
@@ -326,7 +338,7 @@ describe('수동 실행과 load', () => {
     await $.prompt.submit({ text: '이어서', ...prompt })
     await $.prompt.submit({ text: '다음', ...prompt })
 
-    expect(world.context[0]).toEqual(['## 목표\n인수인계 본문'])
+    expect(world.context[0]).toEqual([handoffContext(`${DIR}/handoff/${formatStamp(0)}.md`, '## 목표\n인수인계 본문')])
     expect(world.context[1] ?? []).toHaveLength(0)
   })
 
