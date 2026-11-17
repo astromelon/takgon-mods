@@ -3,5 +3,6 @@
   "version": "0.4.13",
   "description": "개인 생산성 mods: i18n, PR/Linear 연동, 작업 패널, 자동 인수인계 등 8개 모듈",
   "author": { "name": "tglee" },
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "engines": { "claude-code": ">=2.1.323" }
 }

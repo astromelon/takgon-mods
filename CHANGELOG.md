@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### Added
+- `plugin.json`에 `engines["claude-code"]: ">=2.1.323"`을 추가했다. 2.1.323 이상 엔진은 범위 밖이면 설치·업데이트·로드하지 않고, 2.1.322 이하는 이 키를 읽지 않는다.
+
+### Changed
+- CI와 `tools/ci-local.mjs`의 고정 Claude Code 버전을 2.1.296에서 2.1.326으로 올렸다(로컬 2.1.326에서 validate·test 206건·probe_catch·probe_clear_state 통과).
+- M2·M4: deprecated된 `Text`의 `bold`를 같은 굵기인 `weight="semibold"`로 바꿨다.
+
+### Fixed
+- `tests/m6-panel.test.tsx`: 2.1.323부터 `claude plugin validate`가 하는 타입 검사에서 `agent.list` 스텁 값이 `AgentInfo`와 맞지 않는다는 경고(TS2322)를 없앴다.
+
 ## [0.4.13] - 2026-11-14
 
 ### Fixed

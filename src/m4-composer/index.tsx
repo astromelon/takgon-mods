@@ -310,7 +310,7 @@ export const registerComposer = (on: On): void => {
       <Box flexDirection="column" width={width}>
         {pr === null ? null : (
           <Box key="pr-badge">
-            <Text bold wrap="truncate-end">
+            <Text weight="semibold" wrap="truncate-end">
               {formatPrBadge(lang, pr)}
             </Text>
           </Box>

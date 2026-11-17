@@ -1,4 +1,4 @@
-import type { AgentStatus, On, SessionMeasureInput } from 'claude-code'
+import type { AgentInfo, AgentStatus, On, SessionMeasureInput } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import type { GateView } from '../types'
@@ -287,7 +287,8 @@ describe('M6 명령·패널', () => {
     const infos: Array<{ id: string; type: string; status: AgentStatus }> = []
     on('agent.spawn', ($, e) => ({ model: 'haiku', agentId: e.description }))
     on('agent.list', () => ({
-      value: infos.map(one => ({ ...one, description: one.type })),
+      // 엔진 AgentInfo의 나머지 필수 필드는 생략한다(운영 코드는 id·type·status만 읽는다).
+      value: infos.map(one => ({ ...one, description: one.type })) as AgentInfo[],
     }))
     await $.session.start(START)
 

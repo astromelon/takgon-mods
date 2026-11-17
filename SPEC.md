@@ -17,7 +17,7 @@ user scope로 전역 설치해 모든 프로젝트에 적용한다. 8개 모듈�
 ```
 C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
 ├── .claude-plugin/
-│   ├── plugin.json                 # name, version, description, "types": "./types/index.d.ts"
+│   ├── plugin.json                 # name, version, description, "types": "./types/index.d.ts", "engines"
 │   └── marketplace.json            # [추가] 폴더 자체를 marketplace로 (source "./")
 ├── hooks/hooks.json                # { "modules": ["../src/index.ts"] }  ← 경로는 하나만
 ├── types/index.d.ts                # [추가] $.state 계약 (interface PluginState { "takgon-mods": {...} })

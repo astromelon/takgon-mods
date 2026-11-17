@@ -285,7 +285,7 @@ export const registerBrowser = (on: On): void => {
         <Link href={info.url} />
         <Text>{statusText}</Text>
         {info.title !== undefined && <Text>{tr(lang, 'pane.pageTitle', { title: info.title })}</Text>}
-        <Text bold>{errorsHeader}</Text>
+        <Text weight="semibold">{errorsHeader}</Text>
         {errors.map((error, index) => (
           <Text key={`error-${index}`} color="red">- {error}</Text>
         ))}
