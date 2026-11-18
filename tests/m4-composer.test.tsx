@@ -2,6 +2,7 @@ import type { On, SessionMessage } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import type { TaskItem } from '../types'
+import { projectId, projectKey } from '../src/shared/keys'
 import { toTasks, toggleTask } from '../src/shared/tasks'
 import { fit } from '../src/shared/text'
 import {
@@ -92,6 +93,8 @@ describe('composer 순수 로직', () => {
     expect(needsCoach('make it better')).toBe(true)
     expect(needsCoach('/compact')).toBe(false)
     expect(needsCoach('네')).toBe(false)
+    expect(needsCoach('이어서 진행해.')).toBe(false)
+    expect(needsCoach('이어서')).toBe(false)
     expect(needsCoach('continue')).toBe(false)
     expect(needsCoach('src/app.ts 고쳐줘')).toBe(false)
     expect(needsCoach('fix parseArgs')).toBe(false)
@@ -484,6 +487,38 @@ describe('Prompt-coach', () => {
 
     const state = await $.command.run({ command: 'coach', args: '', ...RUN })
     expect(state.text).toBe('프롬프트 코치: 꺼짐')
+  })
+
+  test('handoff load 대기 중이면 묻지 않고, 첨부 뒤 다음 프롬프트는 다시 판정한다', async ($, on) => {
+    const handoffPath = 'C:/proj/.claude/takgon/handoff/20261012-1430.md'
+    const latestKey = projectKey(projectId('C:/proj'), 'm7', 'latest')
+    const world = engine(on, { [latestKey]: { path: handoffPath, summary: '요약', createdAt: 1 } })
+    on('fs.exists', ($, e) => ({ value: e.path.replace(/\\/g, '/') === handoffPath }))
+    on('fs.read', ($, e) => ({ value: e.path.replace(/\\/g, '/') === handoffPath ? '## 다음 단계\n- 이어서' : '' }))
+    coach(on, world, AMBIGUOUS, '취소')
+    await $.session.start(START)
+    await $.command.run({ command: 'tk-handoff', args: 'load', ...RUN })
+
+    const first = await $.prompt.submit({ text: '고쳐줘', ...COMPOSER })
+    expect(first.text).toBe('고쳐줘')
+    expect(world.asks).toHaveLength(0)
+    expect(world.completes).toBe(0)
+
+    await $.prompt.submit({ text: '고쳐줘', ...COMPOSER })
+    expect(world.asks).toHaveLength(1)
+  })
+
+  test('/edit 대상이 있으면 묻지 않는다', async ($, on) => {
+    const world = engine(on)
+    on('fs.read', () => ({ value: 'line1\nline2\n' }))
+    coach(on, world, AMBIGUOUS, '취소')
+    await $.session.start(START)
+    await $.command.run({ command: 'edit', args: 'src/a.ts:1-2', ...RUN })
+
+    const out = await $.prompt.submit({ text: '고쳐줘', ...COMPOSER })
+    expect(out.text).toBe('고쳐줘')
+    expect(world.asks).toHaveLength(0)
+    expect(world.completes).toBe(0)
   })
 })
 

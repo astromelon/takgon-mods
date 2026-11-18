@@ -30,6 +30,10 @@ const prAtom = atom({ plugin: 'takgon-mods', key: 'pr' } as const, null)
 const tasksAtom = atom({ plugin: 'takgon-mods', key: 'tasks' } as const, [])
 const coachOnAtom = atom({ plugin: 'takgon-mods', key: 'coachOn' } as const, true)
 const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
+const handoffPendingAtom = atom({ plugin: 'takgon-mods', key: 'handoffPending' } as const, false)
+const editTargetAtom = atom({ plugin: 'takgon-mods', key: 'editTarget' } as const, null)
+const attachConsoleAtom = atom({ plugin: 'takgon-mods', key: 'attachConsole' } as const, false)
+const browserAtom = atom({ plugin: 'takgon-mods', key: 'browser' } as const, null)
 
 /**
  * 명령을 등록한다. 같은 이름의 사용자·내장 명령 때문에 거부되면 예외를 삼켜 다른 초기화(이 모듈과 뒤쪽 모듈)를 막지 않고,
@@ -159,6 +163,19 @@ const suggestNextSteps = async (
   return now
 }
 
+/** 이 프롬프트에 다른 모듈(M7 인수인계·M3 수정 대상·M2 콘솔 에러)이 맥락을 붙일 예정인지. 대기·지정 상태 기준이다. */
+const willAttachContext = async ($: EngineInterface): Promise<boolean> => {
+  const modules = await read($, modulesAtom)
+  if (modules.handoff && (await read($, handoffPendingAtom))) {
+    return true
+  }
+  if (modules.edit && (await read($, editTargetAtom)) !== null) {
+    return true
+  }
+  const browser = await read($, browserAtom)
+  return modules.browser && (await read($, attachConsoleAtom)) && browser !== null && browser.consoleErrors.length > 0
+}
+
 /** 모호한 요청이면 다듬은 버전을 제안하고 사용자가 고른 대로 진행한다. 실패는 원문 통과. */
 const coachPrompt = async (
   $: EngineInterface,
@@ -169,7 +186,9 @@ const coachPrompt = async (
     !(await isOn($)) ||
     !(await read($, coachOnAtom)) ||
     (e.attachments?.length ?? 0) > 0 ||
-    !needsCoach(e.text)
+    !needsCoach(e.text) ||
+    // 첨부될 맥락이 있으면 짧은 프롬프트("이어서", "고쳐줘")도 모호하지 않다(M2·M3·M7은 M4 뒤에서 붙인다).
+    (await willAttachContext($))
   if (isSkipped) {
     return next(e)
   }

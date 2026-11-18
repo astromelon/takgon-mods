@@ -8,7 +8,7 @@ Claude Code mods 플러그인 `takgon-mods`(개인 생산성 모듈 8개). TypeS
 (빌드 단계 없음). 루트 `package.json`은 `tools/headless.mjs`용 playwright 의존성뿐이며 플러그인 모듈과 무관하다.
 
 mods 코드를 고치기 전에 `plugin-authoring` 스킬을 쓰고, 이벤트·`$` API는 `.claude-plugin/types/claude-code/index.d.ts`
-(플러그인 로드 시 생성, git 제외)를 기준으로 확인한다. 문서와 타입이 다르면 타입을 따른다.
+(플러그인 로드 시 생성, git 제외. 실측: 2.1.326 `claude -p`로는 갱신되지 않았고, 대화형 `claude --plugin-dir .` 세션(2.1.327)에서 갱신됨)를 기준으로 확인한다. 문서와 타입이 다르면 타입을 따른다.
 
 - 설계·결정: `SPEC.md` (**[수정: 실측]** 표시가 원래 명세를 실제 엔진 동작에 맞게 고친 부분)
 - 실측 엔진 제약과 우회: `docs/engine-constraints.md` — 이상한 우회 코드를 지우기 전에 먼저 확인

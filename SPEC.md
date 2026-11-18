@@ -140,7 +140,7 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
   - 렌더러는 checkbox(기본), issue, pr 중에서 고른다. 선택하면 `$.prompt.submit`으로 제출한다.
   - 체크 상태는 `$.store`(`p/{projectId}/m4/tasks`)에 영속화하고, M6 Tasks 탭과 같은 `$.state` 값을 공유한다.
 - Prompt-coach: `prompt.submit`에서 모호한 요청을 판정한다.
-  - **건너뛰는 경우 [추가]**: `e.origin`이 사용자 본인이 아님(플러그인·Next-steps 제출 포함 → 루프 방지), 슬래시 명령, 휴리스틱 통과(짧은 확정 요청 등).
+  - **건너뛰는 경우 [추가]**: `e.origin`이 사용자 본인이 아님(플러그인·Next-steps 제출 포함 → 루프 방지), 슬래시 명령, 휴리스틱 통과(짧은 확정 요청 등), 다른 모듈이 맥락을 붙일 예정인 프롬프트 **[수정: 실측]**(M7 `/tk-handoff load` 대기, M3 `/edit` 대상 지정, M2 콘솔 에러 첨부 예정 — 대기·지정 상태 기준이며 실제 첨부 여부와 무관).
   - 판정과 다듬기를 `$.model.complete` **1회**(작은 모델, `timeoutMs` 4000, JSON `{ambiguous, refined}`)로 처리한다. 실패·타임아웃은 원문 통과.
   - 모호하면 `$.ui.ask`로 [원문 그대로 / 다듬은 버전 / 취소]를 묻는다. 자동 치환은 금지한다.
     `$.ui.ask`는 dismiss·`-p` 실행에서 reject하므로 catch 시 원문 통과.
@@ -167,7 +167,8 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
 - 생성: `$.model.fork`로 작성한다(`timeoutMs` 지정). 항목은 목표, 완료, 진행중, 결정사항(Pinboard), 열린 이슈/PR(M5), 다음 단계.
 - 저장 위치: `{project}/.claude/takgon/handoff/{yyyyMMdd-HHmm}.md`(시각은 `$.clock.now()` 기준 로컬). 최신본 경로는 `p/{projectId}/m7/latest`.
 - 새 세션: `session.start`/`classic.SessionStart`에서 최신 handoff가 있으면 toast로 안내한다.
-  `/handoff load`는 다음 `prompt.submit` 1회에 파일 내용을 `context`로 첨부한다(대기 플래그는 `$.state`).
+  `/tk-handoff load`는 다음 `prompt.submit` 1회에 파일 내용을 `context`로 첨부한다(대기 플래그는 `$.state`).
+  **[수정: 실측]** 첨부할 때 출처(파일 경로) 안내와 동적 길이 코드 펜스로 감싼다(`handoffContext`). `/tk-handoff show`의 요약(300자)은 화면용이라 감싸지 않는다.
 
 ## M2. Inline Browser **[수정: 범위 축소]**
 - URL 감지: `tool.call`(Bash) 결과 출력에서 `https?://(localhost|127\.0\.0\.1):\d+` 패턴을 찾아 `$.state`에 최근 URL로 둔다.

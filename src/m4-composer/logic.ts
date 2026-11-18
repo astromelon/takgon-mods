@@ -147,7 +147,8 @@ export const shouldFork = (hadTools: boolean, lastAt: number | undefined, now: n
 const CONFIRMATIONS = new Set([
   'y', 'n', 'yes', 'no', 'ok', 'okay', 'go', 'continue', 'proceed', 'thanks', 'thank you', 'lgtm',
   '네', '예', '응', '어', '아니', '아니요', '좋아', '좋아요', '계속', '계속해', '계속해줘', '진행', '진행해',
-  '진행해줘', '고마워', '감사합니다', 'ㅇㅇ', 'ㄱㄱ',
+  '진행해줘', '이어서', '이어서 해', '이어서 해줘', '이어서 진행', '이어서 진행해', '이어서 진행해줘',
+  '고마워', '감사합니다', 'ㅇㅇ', 'ㄱㄱ',
 ])
 
 /** 구체성 신호: 파일 경로·확장자, 코드, URL, camelCase/snake_case·호출 식별자, 줄 번호. */
