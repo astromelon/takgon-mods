@@ -9,6 +9,9 @@ import {
   translateSpinnerWord,
 } from '../src/m1-i18n/builtin'
 
+/** 훅 테스트 시간 제한. 킷 기본 5초는 외부 부하가 겹치면 넘길 수 있다(스위트 3개 동시 실행에서 최대 6.7초 실측). 훅 예산 10초보다 길어, 멈춘 훅은 10초에 건너뛰어진 뒤 단언에서 걸린다. */
+const HOOK_TIMEOUT = { timeoutMs: 15_000 } as const
+
 describe('builtin 번역(순수)', () => {
   test('Spinner 단어는 모드별 한국어로, desktop은 Working만 바꾼다', () => {
     expect(translateSpinnerWord('Sauteing', 'thinking', 'terminal')).toBe('생각하는 중')
@@ -55,7 +58,7 @@ const SPINNER = {
 } as const
 
 describe('ui.render 훅', () => {
-  test('ko에서는 Spinner 단어를 바꿔 엔진에 넘기고, en·모듈 off면 그대로 둔다', async ($, on) => {
+  test('ko에서는 Spinner 단어를 바꿔 엔진에 넘기고, en·모듈 off면 그대로 둔다', HOOK_TIMEOUT, async ($, on) => {
     const words: string[] = []
     on('ui.render', { component: 'Spinner' }, ($, e) => {
       words.push(e.props.word)
@@ -71,7 +74,7 @@ describe('ui.render 훅', () => {
     expect(words.at(-1)).toBe('생각하는 중')
   })
 
-  test('TurnDuration은 terminal에서 한국어 한 줄을 직접 그린다', async ($, on) => {
+  test('TurnDuration은 terminal에서 한국어 한 줄을 직접 그린다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     mock.store(on)
     await $.session.start(START)
@@ -86,7 +89,7 @@ describe('ui.render 훅', () => {
     expect((await ui.find({ type: 'Text', text: /1분 4초/ }))?.text).toContain('작업')
   })
 
-  test('i18n 모듈이 꺼지면 TurnDuration을 엔진에 맡긴다', async ($, on) => {
+  test('i18n 모듈이 꺼지면 TurnDuration을 엔진에 맡긴다', HOOK_TIMEOUT, async ($, on) => {
     let isEngineDrawn = false
     on('ui.render', { component: 'TurnDuration' }, ($, e) => {
       isEngineDrawn = true

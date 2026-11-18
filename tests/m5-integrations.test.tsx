@@ -20,6 +20,9 @@ import {
 import { findState, parseIssue, parseSearch, searchBody } from '../src/m5-integrations/linear'
 import { tr } from '../src/m5-integrations/messages'
 
+/** 훅 테스트 시간 제한. 킷 기본 5초는 외부 부하가 겹치면 넘길 수 있다(스위트 3개 동시 실행에서 최대 6.7초 실측). 훅 예산 10초보다 길어, 멈춘 훅은 10초에 건너뛰어진 뒤 단언에서 걸린다. */
+const HOOK_TIMEOUT = { timeoutMs: 15_000 } as const
+
 const ISSUE_A = {
   id: 'u1',
   identifier: 'ENG-1',
@@ -147,7 +150,7 @@ describe('GitLab 해석(순수)', () => {
 })
 
 describe('GitLab MR 폴링', () => {
-  test('GitLab 원격이면 glab으로 MR·승인을 읽어 band에 MR 배지를 띄운다', async ($, on) => {
+  test('GitLab 원격이면 glab으로 MR·승인을 읽어 band에 MR 배지를 띄운다', HOOK_TIMEOUT, async ($, on) => {
     const calls: string[] = []
     engine(
       on,
@@ -190,7 +193,7 @@ describe('GitLab MR 폴링', () => {
     expect(badge).toContain('체크 통과')
   })
 
-  test('glab 미설치·미인증은 원인별 toast 1회', async ($, on) => {
+  test('glab 미설치·미인증은 원인별 toast 1회', HOOK_TIMEOUT, async ($, on) => {
     const toasts: string[] = []
     let mode: 'missing' | 'auth' = 'missing'
     engine(
@@ -352,7 +355,7 @@ const issue = ($: Engine, args: string) =>
   })
 
 describe('GitHub PR 폴링', () => {
-  test('gh 미설치는 원인별 toast 1회, PR 없음은 toast 없이 넘어간다', async ($, on) => {
+  test('gh 미설치는 원인별 toast 1회, PR 없음은 toast 없이 넘어간다', HOOK_TIMEOUT, async ($, on) => {
     const toasts: string[] = []
     let mode: 'missing' | 'nopr' = 'missing'
     const gh = engine(on, () => (mode === 'missing' ? undefined : NO_PR), toasts)
@@ -373,7 +376,7 @@ describe('GitHub PR 폴링', () => {
     expect(toasts).toHaveLength(1)
   })
 
-  test('turn.complete는 직전 갱신 후 10초 이내면 생략한다', async ($, on) => {
+  test('turn.complete는 직전 갱신 후 10초 이내면 생략한다', HOOK_TIMEOUT, async ($, on) => {
     const gh = engine(on, () => NO_PR)
     on('turn.complete', ($, e) => ({ text: e.answer }))
     const clock = mock.clock(on)
@@ -399,7 +402,7 @@ describe('GitHub PR 폴링', () => {
     expect(gh.ghCalls()).toBe(2)
   })
 
-  test('갱신이 진행 중이면 폴링이 gh를 다시 띄우지 않는다', async ($, on) => {
+  test('갱신이 진행 중이면 폴링이 gh를 다시 띄우지 않는다', HOOK_TIMEOUT, async ($, on) => {
     let release: () => void = () => undefined
     const gate = new Promise<void>(resolve => {
       release = resolve
@@ -421,7 +424,7 @@ describe('GitHub PR 폴링', () => {
     expect(gh.ghCalls()).toBe(2)
   })
 
-  test('모듈을 끄면 다음 갱신에서 PR 배지를 비운다', async ($, on) => {
+  test('모듈을 끄면 다음 갱신에서 PR 배지를 비운다', HOOK_TIMEOUT, async ($, on) => {
     engine(on, () => ({
       exitCode: 0,
       stdout: JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', reviewDecision: '', statusCheckRollup: [] }),
@@ -457,7 +460,7 @@ describe('GitHub PR 폴링', () => {
     expect(await (await band()).find({ key: 'pr-badge' })).toBeUndefined()
   })
 
-  test('모듈이 꺼져 있으면 gh를 실행하지 않는다', async ($, on) => {
+  test('모듈이 꺼져 있으면 gh를 실행하지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const gh = engine(on, () => NO_PR)
     const clock = mock.clock(on)
     mock.store(on, { 'g/core/modules': { integrations: false } })
@@ -472,7 +475,7 @@ describe('GitHub PR 폴링', () => {
 })
 
 describe('/issue 명령', () => {
-  test('LINEAR_API_KEY가 없으면 안내한다', async ($, on) => {
+  test('LINEAR_API_KEY가 없으면 안내한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on, () => NO_PR)
     mock.store(on)
     mock.env(on, {})
@@ -482,7 +485,7 @@ describe('/issue 명령', () => {
     expect(out.text).toBe(tr('ko', 'issue.noKey'))
   })
 
-  test('검색은 결과 목록을 돌려주고 키를 응답에 남기지 않는다', async ($, on) => {
+  test('검색은 결과 목록을 돌려주고 키를 응답에 남기지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const requests: Gql[] = []
     engine(on, () => NO_PR)
     linear(on, requests)
@@ -497,7 +500,7 @@ describe('/issue 명령', () => {
     expect(out.text).not.toContain('FAKE_TEST_KEY')
   })
 
-  test('link는 store에 영속화되고 복원 후 목록에 나온다', async ($, on) => {
+  test('link는 store에 영속화되고 복원 후 목록에 나온다', HOOK_TIMEOUT, async ($, on) => {
     const sets: Array<{ key: string; value: unknown }> = []
     const clock = mock.clock(on)
     engine(on, () => NO_PR)
@@ -530,7 +533,7 @@ describe('/issue 명령', () => {
     expect((await issue($, '')).text).toBe(tr('ko', 'issue.linkedEmpty'))
   })
 
-  test('store가 비어 있으면 목록은 빈 안내만 하고 키를 쓰지 않는다', async ($, on) => {
+  test('store가 비어 있으면 목록은 빈 안내만 하고 키를 쓰지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const sets: Array<{ key: string; value: unknown }> = []
     const clock = mock.clock(on)
     engine(on, () => NO_PR)
@@ -543,7 +546,7 @@ describe('/issue 명령', () => {
     expect(sets.filter(one => one.key === LINKED_KEY)).toHaveLength(0)
   })
 
-  test('저장된 연결 이슈를 세션 시작 때 불러온다', async ($, on) => {
+  test('저장된 연결 이슈를 세션 시작 때 불러온다', HOOK_TIMEOUT, async ($, on) => {
     const clock = mock.clock(on)
     engine(on, () => NO_PR)
     mock.store(on, { [LINKED_KEY]: [ISSUE_B] })
@@ -554,7 +557,7 @@ describe('/issue 명령', () => {
     expect((await issue($, '')).text).toContain('ENG-2 [In Progress] 검색 개선')
   })
 
-  test('/clear 뒤처럼 state가 비어 있으면(session.start 없음) 첫 명령에서 연결 이슈를 복원한다', async ($, on) => {
+  test('/clear 뒤처럼 state가 비어 있으면(session.start 없음) 첫 명령에서 연결 이슈를 복원한다', HOOK_TIMEOUT, async ($, on) => {
     const clock = mock.clock(on)
     engine(on, () => NO_PR)
     mock.store(on, { [LINKED_KEY]: [ISSUE_B] })
@@ -566,7 +569,7 @@ describe('/issue 명령', () => {
     expect(listed.text).toContain('ENG-2 [In Progress] 검색 개선')
   })
 
-  test('status는 확인을 거절하면 변경하지 않고, 수락하면 변경한다', async ($, on) => {
+  test('status는 확인을 거절하면 변경하지 않고, 수락하면 변경한다', HOOK_TIMEOUT, async ($, on) => {
     const requests: Gql[] = []
     let answer: 'reject' | 'yes' = 'reject'
     engine(on, () => NO_PR)

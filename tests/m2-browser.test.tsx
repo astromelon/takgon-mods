@@ -13,6 +13,9 @@ import {
 } from '../src/m2-browser/logic'
 import { headlessArgv, parseHeadlessOutput } from '../src/shared/headless'
 
+/** 훅 테스트 시간 제한. 킷 기본 5초는 외부 부하가 겹치면 넘길 수 있다(스위트 3개 동시 실행에서 최대 6.7초 실측). 훅 예산 10초보다 길어, 멈춘 훅은 10초에 건너뛰어진 뒤 단언에서 걸린다. */
+const HOOK_TIMEOUT = { timeoutMs: 15_000 } as const
+
 describe('M2 순수 로직', () => {
   test('출력에서 첫 로컬 URL만 뽑는다', () => {
     expect(extractLocalUrl('  ➜  Local:   http://localhost:5173/\n  ➜  Network: http://192.168.0.2:5173/'))
@@ -174,7 +177,7 @@ const browse = (args: string) => ({
 const pane = { plugin: 'takgon-mods', component: 'Pane', requestId: 'takgon-browser', props: {} } as const
 
 describe('M2 훅', () => {
-  test('Bash 결과 출력에서 로컬 URL을 감지해 pane에 보인다', async ($, on) => {
+  test('Bash 결과 출력에서 로컬 URL을 감지해 pane에 보인다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     on('tool.call', { tool: 'Bash' }, () => ({
       result: { stdout: `  VITE ready\n  Local: ${URL}\n`, stderr: '', interrupted: false },
@@ -187,7 +190,7 @@ describe('M2 훅', () => {
     expect((await ui.find({ type: 'Link' }))?.props.href).toBe(URL)
   })
 
-  test('/browse는 headless JSON을 반영하고 terminal은 Image, desktop은 경로를 그린다', async ($, on) => {
+  test('/browse는 headless JSON을 반영하고 terminal은 Image, desktop은 경로를 그린다', HOOK_TIMEOUT, async ($, on) => {
     const { runs } = engine(on)
     await $.session.start(START)
 
@@ -211,7 +214,7 @@ describe('M2 훅', () => {
     expect((await desktop.find({ type: 'Button', key: 'open-external' }))).toBeDefined()
   })
 
-  test('playwright가 없으면 원인별 toast는 1회만, 상태는 http 값을 쓴다', async ($, on) => {
+  test('playwright가 없으면 원인별 toast는 1회만, 상태는 http 값을 쓴다', HOOK_TIMEOUT, async ($, on) => {
     const missing = JSON.stringify({ ok: false, status: 0, consoleErrors: [], error: 'playwright-missing' })
     const { toasts } = engine(on, { exitCode: 2, stdout: missing })
     await $.session.start(START)
@@ -223,7 +226,7 @@ describe('M2 훅', () => {
     expect(second.text).toContain('200')
   })
 
-  test('node가 없어도 toast 1회 후 http 상태만 보인다', async ($, on) => {
+  test('node가 없어도 toast 1회 후 http 상태만 보인다', HOOK_TIMEOUT, async ($, on) => {
     const { toasts } = engine(on, { isNodeMissing: true })
     await $.session.start(START)
 
@@ -236,7 +239,7 @@ describe('M2 훅', () => {
     expect(await ui.find({ type: 'Text', text: /200/ })).toBeDefined()
   })
 
-  test('콘솔 첨부를 켜면 다음 직접 입력 프롬프트에 한 번만 첨부한다', async ($, on) => {
+  test('콘솔 첨부를 켜면 다음 직접 입력 프롬프트에 한 번만 첨부한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     const contexts: (readonly string[] | undefined)[] = []
     on('prompt.submit', ($, e) => {
@@ -257,7 +260,7 @@ describe('M2 훅', () => {
     expect(contexts[1] ?? []).toHaveLength(0)
   })
 
-  test('(M4 코치) 콘솔 첨부가 예정이면 프롬프트 코치가 묻지 않는다', async ($, on) => {
+  test('(M4 코치) 콘솔 첨부가 예정이면 프롬프트 코치가 묻지 않는다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     let completes = 0
     let asks = 0
@@ -298,7 +301,7 @@ describe('M2 훅', () => {
     expect(contexts[1] ?? []).toHaveLength(0)
   })
 
-  test('(M4 코치) M2를 끄면 콘솔 첨부가 켜져 있어도 다시 판정한다', async ($, on) => {
+  test('(M4 코치) M2를 끄면 콘솔 첨부가 켜져 있어도 다시 판정한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     let completes = 0
     let asks = 0
@@ -342,7 +345,7 @@ describe('M2 훅', () => {
     expect(contexts[0] ?? []).toHaveLength(0)
   })
 
-  test('(M4 코치) 콘솔 에러가 0건이면 첨부를 켜도 다시 판정한다', async ($, on) => {
+  test('(M4 코치) 콘솔 에러가 0건이면 첨부를 켜도 다시 판정한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on, {
       stdout: JSON.stringify({ ok: true, status: 200, title: 'Vite App', consoleErrors: [], screenshot: SHOT }),
     })
@@ -383,7 +386,7 @@ describe('M2 훅', () => {
     expect(contexts[0] ?? []).toHaveLength(0)
   })
 
-  test('모듈이 꺼지면 /browse는 안내만 하고 실행하지 않는다', async ($, on) => {
+  test('모듈이 꺼지면 /browse는 안내만 하고 실행하지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const { runs } = engine(on, { store: { 'g/core/modules': { browser: false } } })
     await $.session.start(START)
 

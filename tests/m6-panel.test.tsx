@@ -26,6 +26,9 @@ import {
   visible,
 } from '../src/m6-panel/logic'
 
+/** 훅 테스트 시간 제한. 킷 기본 5초는 외부 부하가 겹치면 넘길 수 있다(스위트 3개 동시 실행에서 최대 6.7초 실측). 훅 예산 10초보다 길어, 멈춘 훅은 10초에 건너뛰어진 뒤 단언에서 걸린다. */
+const HOOK_TIMEOUT = { timeoutMs: 15_000 } as const
+
 describe('M6 순수 로직', () => {
   test('/pin 인자 해석', () => {
     expect(parsePinArgs('')).toEqual({ kind: 'last' })
@@ -155,7 +158,7 @@ describe('/panel 인자(순수)', () => {
 })
 
 describe('M6 명령·패널', () => {
-  test('/panel은 takgon-panel pane을 열고, close는 닫는다', async ($, on) => {
+  test('/panel은 takgon-panel pane을 열고, close는 닫는다', HOOK_TIMEOUT, async ($, on) => {
     const opened: string[] = []
     engine(on, [], opened)
     mock.store(on)
@@ -167,7 +170,7 @@ describe('M6 명령·패널', () => {
     expect(opened).toEqual(['takgon-panel', 'close:takgon-panel'])
   })
 
-  test('탭 버튼으로 탭을 바꾼다(terminal·desktop)', async ($, on) => {
+  test('탭 버튼으로 탭을 바꾼다(terminal·desktop)', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     mock.store(on)
     await $.session.start(START)
@@ -185,7 +188,7 @@ describe('M6 명령·패널', () => {
     }
   })
 
-  test('/pin <내용>과 /pin(직전 응답)으로 핀을 추가하고, 패널에서 삭제한다', async ($, on) => {
+  test('/pin <내용>과 /pin(직전 응답)으로 핀을 추가하고, 패널에서 삭제한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     on('session.messages', () => ({
       value: [
@@ -216,7 +219,7 @@ describe('M6 명령·패널', () => {
     expect((await $.command.run(run('pin', 'list'))).text).not.toContain('배포 전 확인')
   })
 
-  test('/pin을 동시에 여러 번 불러도 핀이 유실되지 않는다', async ($, on) => {
+  test('/pin을 동시에 여러 번 불러도 핀이 유실되지 않는다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     mock.store(on)
     await $.session.start(START)
@@ -228,7 +231,7 @@ describe('M6 명령·패널', () => {
     }
   })
 
-  test('세션 시작 뒤 다른 세션이 store에 추가한 핀이 /pin 실행 후에도 남는다', async ($, on) => {
+  test('세션 시작 뒤 다른 세션이 store에 추가한 핀이 /pin 실행 후에도 남는다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     const key = `p/${PID}/m6/pins`
     const data = new Map<string, unknown>([
@@ -256,7 +259,7 @@ describe('M6 명령·패널', () => {
     expect(saved.map(one => one.text)).toEqual(['기존 핀', '다른 세션 핀', '새 핀'])
   })
 
-  test('/pin은 직전 응답이 없으면 안내만 한다', async ($, on) => {
+  test('/pin은 직전 응답이 없으면 안내만 한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     on('session.messages', () => ({ value: [{ role: 'user', text: '질문', toolUses: [] }] }))
     mock.store(on)
@@ -265,7 +268,7 @@ describe('M6 명령·패널', () => {
     expect((await $.command.run(run('pin'))).text).toContain('직전 응답이 없습니다')
   })
 
-  test('할 일 체크 토글은 m4 tasks 키에 저장돼 복원 후에도 유지된다', async ($, on) => {
+  test('할 일 체크 토글은 m4 tasks 키에 저장돼 복원 후에도 유지된다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     mock.store(on, {
       [`p/${PID}/m4/tasks`]: [
@@ -281,7 +284,7 @@ describe('M6 명령·패널', () => {
     expect((await ui.find({ key: 'task-t1' }))?.text).toContain('[x]')
   })
 
-  test('agent.spawn으로 시작을, $.agent.list()로 완료·실패를 Agents 탭에 기록한다', async ($, on) => {
+  test('agent.spawn으로 시작을, $.agent.list()로 완료·실패를 Agents 탭에 기록한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     mock.store(on)
     const infos: Array<{ id: string; type: string; status: AgentStatus }> = []
@@ -321,7 +324,7 @@ describe('M6 명령·패널', () => {
     )
   })
 
-  test('/panel agents는 Agents 탭으로 열고, 탭 버튼에는 숫자 단축키가 있다', async ($, on) => {
+  test('/panel agents는 Agents 탭으로 열고, 탭 버튼에는 숫자 단축키가 있다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     mock.store(on)
     await $.session.start(START)
@@ -333,7 +336,7 @@ describe('M6 명령·패널', () => {
     expect((await ui.find({ key: 'tab-pinboard' }))?.props).toMatchObject({ variant: 'secondary', hotkey: '1' })
   })
 
-  test('/clear 뒤처럼 state가 비어 있으면 첫 명령에서 store의 핀·임계치를 복원한다', async ($, on) => {
+  test('/clear 뒤처럼 state가 비어 있으면 첫 명령에서 store의 핀·임계치를 복원한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     const pid = projectId('C:/proj')
     mock.store(on, {
@@ -350,7 +353,7 @@ describe('M6 명령·패널', () => {
     expect(await ui.find({ type: 'Text', text: /경고 임계치: 65%/ })).toBeDefined()
   })
 
-  test('store가 비어 있어도 목록은 빈 안내만 하고 쓰지 않으며, 첫 /pin·임계치 설정이 각자의 키를 만든다', async ($, on) => {
+  test('store가 비어 있어도 목록은 빈 안내만 하고 쓰지 않으며, 첫 /pin·임계치 설정이 각자의 키를 만든다', HOOK_TIMEOUT, async ($, on) => {
     const sets: Array<{ key: string; value: unknown }> = []
     engine(on)
     const data = new Map<string, unknown>()
@@ -380,7 +383,7 @@ describe('M6 명령·패널', () => {
     expect(sets.filter(one => one.key === 'g/m6/threshold')).toEqual([{ key: 'g/m6/threshold', value: 50 }])
   })
 
-  test('/panel threshold로 바꾼 임계치로 경고하고, 인자 없이 부르면 현재 값을 보여준다', async ($, on) => {
+  test('/panel threshold로 바꾼 임계치로 경고하고, 인자 없이 부르면 현재 값을 보여준다', HOOK_TIMEOUT, async ($, on) => {
     const toasts: string[] = []
     engine(on, toasts)
     mock.store(on)
@@ -405,7 +408,7 @@ describe('M6 명령·패널', () => {
     expect(await ui.find({ type: 'Text', text: /경고 임계치: 50%/ })).toBeDefined()
   })
 
-  test('session.measure에서 컨텍스트 80% 이상이면 세션당 1회만 toast하고 Usage 탭에 표시한다', async ($, on) => {
+  test('session.measure에서 컨텍스트 80% 이상이면 세션당 1회만 toast하고 Usage 탭에 표시한다', HOOK_TIMEOUT, async ($, on) => {
     const toasts: string[] = []
     engine(on, toasts)
     mock.store(on)
@@ -430,7 +433,7 @@ describe('M6 명령·패널', () => {
     expect(await ui.find({ type: 'Text', text: /\$1\.23/ })).toBeDefined()
   })
 
-  test('panel 모듈이 꺼지면 명령은 안내만 하고 pane을 열지 않는다', async ($, on) => {
+  test('panel 모듈이 꺼지면 명령은 안내만 하고 pane을 열지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const opened: string[] = []
     engine(on, [], opened)
     mock.store(on, { 'g/core/modules': { panel: false } })
@@ -687,7 +690,7 @@ describe('gate 탭', () => {
     expect(SYNC_SHOWN).toBe(5)
   })
 
-  test('a. /panel gate: 회전 파일(.1)과 현재 로그를 합쳐 시각 내림차순으로 채운다', async ($, on) => {
+  test('a. /panel gate: 회전 파일(.1)과 현재 로그를 합쳐 시각 내림차순으로 채운다', HOOK_TIMEOUT, async ($, on) => {
     const line = (ts: string, cmd: string) =>
       JSON.stringify({ ts, decision: 'ask', hits: ['rule-a'], command: cmd, cwd: 'C:/proj' })
     const world = setupGateWorld(on, {
@@ -728,7 +731,7 @@ describe('gate 탭', () => {
     }
   })
 
-  test('b. 로그·동기화 파일이 전부 없어도 빈 배열로 채우고 패널을 연다', async ($, on) => {
+  test('b. 로그·동기화 파일이 전부 없어도 빈 배열로 채우고 패널을 연다', HOOK_TIMEOUT, async ($, on) => {
     const world = setupGateWorld(on)
     await $.session.start(START)
 
@@ -741,7 +744,7 @@ describe('gate 탭', () => {
     expect(gate?.unreadable).toEqual([])
   })
 
-  test('c. fs.exists는 true인데 fs.read가 거부되면 그 출처만 unreadable에 기록한다', async ($, on) => {
+  test('c. fs.exists는 true인데 fs.read가 거부되면 그 출처만 unreadable에 기록한다', HOOK_TIMEOUT, async ($, on) => {
     const line = JSON.stringify({
       ts: '2026-11-10T02:00:00+09:00',
       decision: 'deny',
@@ -761,7 +764,7 @@ describe('gate 탭', () => {
     expect(gate?.records[0]?.tool).toBe('claude')
   })
 
-  test('d. session.measure: 새 실패 이벤트는 toast 1회 + syncSeen 저장, mtime 그대로면 다시 읽지 않는다', async ($, on) => {
+  test('d. session.measure: 새 실패 이벤트는 toast 1회 + syncSeen 저장, mtime 그대로면 다시 읽지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const syncJson = JSON.stringify({
       last_id: 7,
       events: [
@@ -787,7 +790,7 @@ describe('gate 탭', () => {
     expect(world.toasts).toHaveLength(1)
   })
 
-  test('e. mtime이 바뀌어도 같은 id나 통과면 toast 없고, 새 실패 id 9면 toast 1회·seen 9', async ($, on) => {
+  test('e. mtime이 바뀌어도 같은 id나 통과면 toast 없고, 새 실패 id 9면 toast 1회·seen 9', HOOK_TIMEOUT, async ($, on) => {
     const fail7 = { id: 7, ts: '2026-11-10T02:00:00+09:00', passed: false, changed: ['a.py'], reason: '실패7' }
     const pass8 = { id: 8, ts: '2026-11-10T02:05:00+09:00', passed: true, changed: ['a.py'], notice: '통과8' }
     const fail9 = { id: 9, ts: '2026-11-10T02:10:00+09:00', passed: false, changed: ['b.py'], reason: '실패9' }
@@ -819,7 +822,7 @@ describe('gate 탭', () => {
     expect(world.storeData.get(SYNC_SEEN_KEY)).toBe(9)
   })
 
-  test('f. /clear 뒤처럼 state가 비어 있어도 store의 syncSeen이 같으면 다시 toast하지 않는다', async ($, on) => {
+  test('f. /clear 뒤처럼 state가 비어 있어도 store의 syncSeen이 같으면 다시 toast하지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const syncJson = JSON.stringify({
       last_id: 7,
       events: [{ id: 7, ts: '2026-11-10T02:00:00+09:00', passed: false, changed: ['a.py'], reason: '실패7' }],
@@ -836,7 +839,7 @@ describe('gate 탭', () => {
     expect(world.toasts).toHaveLength(0)
   })
 
-  test('g. /mods panel off이면 session.measure에서 fs.stat·fs.read를 부르지 않는다', async ($, on) => {
+  test('g. /mods panel off이면 session.measure에서 fs.stat·fs.read를 부르지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const world = setupGateWorld(on, {
       files: { [PATHS.sync]: '{"last_id":1,"events":[]}' },
       syncMtime: 100,
@@ -849,7 +852,7 @@ describe('gate 탭', () => {
     expect(world.reads).toHaveLength(0)
   })
 
-  test('h. USERPROFILE·HOME이 모두 undefined면 아무것도 읽지 않고 gate.records는 빈 배열이다', async ($, on) => {
+  test('h. USERPROFILE·HOME이 모두 undefined면 아무것도 읽지 않고 gate.records는 빈 배열이다', HOOK_TIMEOUT, async ($, on) => {
     const world = setupGateWorld(on, {
       home: undefined,
       files: { [PATHS.logs.claude]: '{"ts":"2026-11-10T01:00:00Z","command":"blocked-cmd"}' },

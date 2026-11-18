@@ -13,6 +13,9 @@ import {
 } from '../src/m3-edit/logic'
 import { parseHeadlessOutput } from '../src/shared/headless'
 
+/** 훅 테스트 시간 제한. 킷 기본 5초는 외부 부하가 겹치면 넘길 수 있다(스위트 3개 동시 실행에서 최대 6.7초 실측). 훅 예산 10초보다 길어, 멈춘 훅은 10초에 건너뛰어진 뒤 단언에서 걸린다. */
+const HOOK_TIMEOUT = { timeoutMs: 15_000 } as const
+
 describe('범위 파싱(순수)', () => {
   test('경로:시작-끝, Windows 드라이브 경로, 단일 행', () => {
     expect(parseEditArgs('src/a.ts:3-5')).toEqual({ kind: 'range', path: 'src/a.ts', start: 3, end: 5 })
@@ -159,7 +162,7 @@ const submit = ($: Engine, text: string) =>
   $.prompt.submit({ text, origin: { kind: 'composer' }, wait: false })
 
 describe('/edit 텍스트 대상', () => {
-  test('지정 후 다음 사용자 프롬프트에 범위 지시와 발췌를 첨부하고, clear로 해제한다', async ($, on) => {
+  test('지정 후 다음 사용자 프롬프트에 범위 지시와 발췌를 첨부하고, clear로 해제한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     mock.store(on)
     const seen = captureContext(on)
@@ -180,7 +183,7 @@ describe('/edit 텍스트 대상', () => {
     expect(seen.at(-1) ?? []).toHaveLength(0)
   })
 
-  test('범위가 파일 길이를 넘으면 지정하지 않는다', async ($, on) => {
+  test('범위가 파일 길이를 넘으면 지정하지 않는다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     mock.store(on)
     const seen = captureContext(on)
@@ -191,7 +194,7 @@ describe('/edit 텍스트 대상', () => {
     expect(seen.at(-1) ?? []).toHaveLength(0)
   })
 
-  test('선택 영역이 없으면 안내하고, 있으면 발췌로 첨부한다', async ($, on) => {
+  test('선택 영역이 없으면 안내하고, 있으면 발췌로 첨부한다', HOOK_TIMEOUT, async ($, on) => {
     let selection: { text: string } | undefined
     on('ui.selection', () => ({ value: selection }))
     engine(on)
@@ -209,7 +212,7 @@ describe('/edit 텍스트 대상', () => {
     expect(seen.at(-1)?.join('\n')).toContain('고칠 문단입니다')
   })
 
-  test('/edit 지정 뒤 파일이 바뀌면 다음 프롬프트에 최신 발췌가 들어간다', async ($, on) => {
+  test('/edit 지정 뒤 파일이 바뀌면 다음 프롬프트에 최신 발췌가 들어간다', HOOK_TIMEOUT, async ($, on) => {
     const files: Record<string, string> = { 'C:/proj/src/a.ts': SOURCE }
     engine(on, files)
     mock.store(on)
@@ -227,7 +230,7 @@ describe('/edit 텍스트 대상', () => {
 })
 
 describe('Edit/Write 가드', () => {
-  test('대상 파일의 범위 밖 Edit·Write는 거부, 범위 안·다른 파일은 통과', async ($, on) => {
+  test('대상 파일의 범위 밖 Edit·Write는 거부, 범위 안·다른 파일은 통과', HOOK_TIMEOUT, async ($, on) => {
     const ran: string[] = []
     on('tool.call', { tool: 'Edit' }, ($, e) => {
       ran.push(e.file_path)
@@ -272,7 +275,7 @@ describe('Edit/Write 가드', () => {
     expect(ran).toEqual(['C:\\proj\\src\\a.ts', 'C:/proj/src/b.ts'])
   })
 
-  test('범위 안 Edit가 행을 늘리면 대상 범위 끝도 따라 늘어난다', async ($, on) => {
+  test('범위 안 Edit가 행을 늘리면 대상 범위 끝도 따라 늘어난다', HOOK_TIMEOUT, async ($, on) => {
     on('tool.call', { tool: 'Edit' }, ($, e) => ({ result: { filePath: e.file_path } as never }))
     engine(on)
     mock.store(on)
@@ -285,7 +288,7 @@ describe('Edit/Write 가드', () => {
 })
 
 describe('/edit dom', () => {
-  test('headless 결과로 DOM 대상을 만들고 프롬프트에 selector·style을 첨부한다', async ($, on) => {
+  test('headless 결과로 DOM 대상을 만들고 프롬프트에 selector·style을 첨부한다', HOOK_TIMEOUT, async ($, on) => {
     const argvs: (readonly string[])[] = []
     on('fs.exists', () => ({ value: true }))
     on('fs.write', () => ({ value: undefined }))
@@ -333,7 +336,7 @@ describe('/edit dom', () => {
     expect(fencedDom).toContain(`\`\`\`\`\ncontent: ${'```' + 'a'.repeat(197)}\n\`\`\`\``)
   })
 
-  test('playwright가 없으면 대상을 만들지 않고 toast는 원인별 1회만', async ($, on) => {
+  test('playwright가 없으면 대상을 만들지 않고 toast는 원인별 1회만', HOOK_TIMEOUT, async ($, on) => {
     const toasts: string[] = []
     on('ui.toast', ($, e) => {
       toasts.push(e.text)
@@ -537,7 +540,7 @@ const captureTools = (on: On): string[] => {
 }
 
 describe('계획서 범위 가드', () => {
-  test('브랜치가 일치하면 변경 대상 파일 밖 Edit·Write를 거부한다', async ($, on) => {
+  test('브랜치가 일치하면 변경 대상 파일 밖 Edit·Write를 거부한다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     const argvs = gitEngine(on, { branch: 'feat/a', plan: PLAN })
     mock.store(on)
@@ -568,7 +571,7 @@ describe('계획서 범위 가드', () => {
     expect(argvs.length).toBeGreaterThan(0)
   })
 
-  test('브랜치가 일치하고 변경 대상 파일·디렉터리 안이면 Edit·Write를 허용한다', async ($, on) => {
+  test('브랜치가 일치하고 변경 대상 파일·디렉터리 안이면 Edit·Write를 허용한다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     gitEngine(on, { branch: 'feat/a', plan: PLAN })
     mock.store(on)
@@ -609,7 +612,7 @@ describe('계획서 범위 가드', () => {
     ])
   })
 
-  test('브랜치 불일치면 비활성으로 통과한다', async ($, on) => {
+  test('브랜치 불일치면 비활성으로 통과한다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     gitEngine(on, { branch: 'main', plan: PLAN })
     mock.store(on)
@@ -625,7 +628,7 @@ describe('계획서 범위 가드', () => {
     expect(ran).toEqual(['C:/proj/src/b.ts'])
   })
 
-  test('계획서 파일이 없으면 비활성으로 통과한다', async ($, on) => {
+  test('계획서 파일이 없으면 비활성으로 통과한다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     gitEngine(on, { branch: 'feat/a' })
     mock.store(on)
@@ -641,7 +644,7 @@ describe('계획서 범위 가드', () => {
     expect(ran).toEqual(['C:/proj/src/b.ts'])
   })
 
-  test('계획서에 # 브랜치가 없으면 비활성으로 통과한다', async ($, on) => {
+  test('계획서에 # 브랜치가 없으면 비활성으로 통과한다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     gitEngine(on, { branch: 'feat/a', plan: '# 작업\nx\n\n# 변경 대상 파일\n- `src/a.ts`\n' })
     mock.store(on)
@@ -657,7 +660,7 @@ describe('계획서 범위 가드', () => {
     expect(ran).toEqual(['C:/proj/src/b.ts'])
   })
 
-  test('git 종료 코드가 0이 아니면 비활성으로 통과한다', async ($, on) => {
+  test('git 종료 코드가 0이 아니면 비활성으로 통과한다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     gitEngine(on, { branch: 'feat/a', plan: PLAN, exitCode: 128 })
     mock.store(on)
@@ -673,7 +676,7 @@ describe('계획서 범위 가드', () => {
     expect(ran).toEqual(['C:/proj/src/b.ts'])
   })
 
-  test('process.run 목이 없어도 비활성으로 통과한다', async ($, on) => {
+  test('process.run 목이 없어도 비활성으로 통과한다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     engine(on, { 'C:/proj/src/b.ts': SOURCE })
     mock.store(on)
@@ -689,7 +692,7 @@ describe('계획서 범위 가드', () => {
     expect(ran).toEqual(['C:/proj/src/b.ts'])
   })
 
-  test('저장소 밖 경로와 .git/ai-task.md 자체는 활성 상태에서도 통과한다', async ($, on) => {
+  test('저장소 밖 경로와 .git/ai-task.md 자체는 활성 상태에서도 통과한다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     gitEngine(on, { branch: 'feat/a', plan: PLAN })
     mock.store(on)
@@ -712,7 +715,7 @@ describe('계획서 범위 가드', () => {
     expect(ran).toEqual(['C:/other/x.ts', 'write:C:/proj/.git/ai-task.md'])
   })
 
-  test('/edit 행 범위와 동시 활성이면 계획서 범위를 먼저 판정하고 이어서 행 범위를 판정한다', async ($, on) => {
+  test('/edit 행 범위와 동시 활성이면 계획서 범위를 먼저 판정하고 이어서 행 범위를 판정한다', HOOK_TIMEOUT, async ($, on) => {
     captureTools(on)
     gitEngine(on, { branch: 'feat/a', plan: PLAN })
     mock.store(on)
@@ -737,7 +740,7 @@ describe('계획서 범위 가드', () => {
     expect(outOfRange.deny).toContain('5~5')
   })
 
-  test('/mods edit off 뒤에는 계획서 밖 Edit도 통과한다', async ($, on) => {
+  test('/mods edit off 뒤에는 계획서 밖 Edit도 통과한다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     gitEngine(on, { branch: 'feat/a', plan: PLAN })
     mock.store(on)
@@ -760,7 +763,7 @@ describe('계획서 범위 가드', () => {
     expect(ran).toEqual(['C:/proj/src/b.ts'])
   })
 
-  test('/edit 인자 없음 출력에 계획서 범위 활성 여부·브랜치·파일 수를 표시한다', async ($, on) => {
+  test('/edit 인자 없음 출력에 계획서 범위 활성 여부·브랜치·파일 수를 표시한다', HOOK_TIMEOUT, async ($, on) => {
     let currentBranch = 'feat/a'
     on('process.run', ($, e) => {
       let stdout = ''
@@ -792,7 +795,7 @@ describe('계획서 범위 가드', () => {
     expect(inactiveText).toContain('꺼짐')
   })
 
-  test('목록 밖이지만 git 무시 대상인 Write·Edit는 허용되고 실제 도구가 실행된다', async ($, on) => {
+  test('목록 밖이지만 git 무시 대상인 Write·Edit는 허용되고 실제 도구가 실행된다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     gitEngine(on, { branch: 'feat/a', plan: PLAN, ignored: ['C:/proj/docs/plan.md'] })
     mock.store(on)
@@ -815,7 +818,7 @@ describe('계획서 범위 가드', () => {
     expect(ran).toEqual(['C:/proj/docs/plan.md', 'write:C:/proj/docs/plan.md'])
   })
 
-  test('목록 밖이고 무시 대상이 아니면 거부 사유에 사용자에게 확인 안내가 들어 있다', async ($, on) => {
+  test('목록 밖이고 무시 대상이 아니면 거부 사유에 사용자에게 확인 안내가 들어 있다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     gitEngine(on, { branch: 'feat/a', plan: PLAN, ignored: ['C:/proj/docs/plan.md'] })
     mock.store(on)
@@ -833,7 +836,7 @@ describe('계획서 범위 가드', () => {
     expect(ran).toEqual([])
   })
 
-  test('목록 안 파일 Edit에서는 check-ignore가 한 번도 실행되지 않는다', async ($, on) => {
+  test('목록 안 파일 Edit에서는 check-ignore가 한 번도 실행되지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     const argvs = gitEngine(on, { branch: 'feat/a', plan: PLAN })
     mock.store(on)
@@ -851,7 +854,7 @@ describe('계획서 범위 가드', () => {
     expect(argvs.some(argv => argv.includes('check-ignore'))).toBe(false)
   })
 
-  test('check-ignore가 128을 돌려주면 거부를 유지한다', async ($, on) => {
+  test('check-ignore가 128을 돌려주면 거부를 유지한다', HOOK_TIMEOUT, async ($, on) => {
     const ran = captureTools(on)
     gitEngine(on, { branch: 'feat/a', plan: PLAN, checkIgnoreExitCode: 128 })
     mock.store(on)

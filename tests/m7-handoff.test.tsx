@@ -13,6 +13,9 @@ import {
   toThreshold,
 } from '../src/m7-handoff/logic'
 
+/** 훅 테스트 시간 제한. 킷 기본 5초는 외부 부하가 겹치면 넘길 수 있다(스위트 3개 동시 실행에서 최대 6.7초 실측). 훅 예산 10초보다 길어, 멈춘 훅은 10초에 건너뛰어진 뒤 단언에서 걸린다. */
+const HOOK_TIMEOUT = { timeoutMs: 15_000 } as const
+
 describe('handoff 순수 로직', () => {
   test('파일명 시각은 로컬 시간 yyyyMMdd-HHmm, 같은 분이면 -2 접미', () => {
     const at = new Date(2026, 9, 12, 9, 5, 42).getTime()
@@ -188,7 +191,7 @@ describe('생성 겹침', () => {
   const handoffFiles = (world: World): string[] =>
     [...world.files.keys()].filter(path => path.startsWith(`${DIR}/handoff/`))
 
-  test('자동 생성 중에 /tk-handoff를 부르면 두 번째 문서를 만들지 않고 안내한다', async ($, on) => {
+  test('자동 생성 중에 /tk-handoff를 부르면 두 번째 문서를 만들지 않고 안내한다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     const started = new Promise<void>(resolve => { world.forkGate.started = resolve })
     let release!: () => void
@@ -210,7 +213,7 @@ describe('생성 겹침', () => {
     expect(handoffFiles(world)).toHaveLength(1)
   })
 
-  test('/tk-handoff가 만드는 중이면 자동 생성은 겹쳐 돌지 않는다', async ($, on) => {
+  test('/tk-handoff가 만드는 중이면 자동 생성은 겹쳐 돌지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     const started = new Promise<void>(resolve => { world.forkGate.started = resolve })
     let release!: () => void
@@ -233,7 +236,7 @@ describe('생성 겹침', () => {
 })
 
 describe('자동 트리거', () => {
-  test('75% 미만이면 만들지 않고, 이상이면 세션당 1회만 만든다', async ($, on) => {
+  test('75% 미만이면 만들지 않고, 이상이면 세션당 1회만 만든다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     const clock = mock.clock(on, { now: new Date(2026, 9, 12, 9, 5).getTime() })
     await $.session.start(START)
@@ -254,7 +257,7 @@ describe('자동 트리거', () => {
     expect(world.files.get(`${DIR}/.gitignore`)).toBe('*\n')
   })
 
-  test('모듈이 꺼져 있으면 아무것도 하지 않는다', async ($, on) => {
+  test('모듈이 꺼져 있으면 아무것도 하지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, { 'g/core/modules': { handoff: false } })
     const clock = mock.clock(on)
     await $.session.start(START)
@@ -264,7 +267,7 @@ describe('자동 트리거', () => {
     expect(world.forks).toHaveLength(0)
   })
 
-  test('fork 실패는 자동이면 조용히, 수동이면 안내한다', async ($, on) => {
+  test('fork 실패는 자동이면 조용히, 수동이면 안내한다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     world.isForkOk.value = false
     const clock = mock.clock(on)
@@ -279,7 +282,7 @@ describe('자동 트리거', () => {
     expect(out.text).toContain('nothing-to-fork')
   })
 
-  test('자동 fork가 실패하면 다음 답변 턴에 재시도하고, 3번 실패 뒤에는 멈춘다', async ($, on) => {
+  test('자동 fork가 실패하면 다음 답변 턴에 재시도하고, 3번 실패 뒤에는 멈춘다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     world.isForkOk.value = false
     const clock = mock.clock(on)
@@ -296,7 +299,7 @@ describe('자동 트리거', () => {
 })
 
 describe('임계치 설정', () => {
-  test('/tk-handoff threshold로 바꾼 임계치에서 자동 생성하고, 인자 없이 부르면 현재 값을 보여준다', async ($, on) => {
+  test('/tk-handoff threshold로 바꾼 임계치에서 자동 생성하고, 인자 없이 부르면 현재 값을 보여준다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     const clock = mock.clock(on, { now: new Date(2026, 9, 12, 9, 5).getTime() })
     await $.session.start(START)
@@ -312,7 +315,7 @@ describe('임계치 설정', () => {
 })
 
 describe('수동 실행과 load', () => {
-  test('같은 분에 두 번 만들면 -2 접미, show는 최신본을 보여준다', async ($, on) => {
+  test('같은 분에 두 번 만들면 -2 접미, show는 최신본을 보여준다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     mock.clock(on, { now: new Date(2026, 9, 12, 14, 30).getTime() })
     await $.session.start(START)
@@ -327,7 +330,7 @@ describe('수동 실행과 load', () => {
     expect(shown.text).toContain('인수인계 본문')
   })
 
-  test('load 후 다음 composer 프롬프트 1회에만 파일 내용을 context로 붙인다', async ($, on) => {
+  test('load 후 다음 composer 프롬프트 1회에만 파일 내용을 context로 붙인다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     mock.clock(on)
     await $.session.start(START)
@@ -342,7 +345,7 @@ describe('수동 실행과 load', () => {
     expect(world.context[1] ?? []).toHaveLength(0)
   })
 
-  test('새 세션은 store의 최신본 파일이 있으면 toast로 안내하고, 없으면 load가 안내한다', async ($, on) => {
+  test('새 세션은 store의 최신본 파일이 있으면 toast로 안내하고, 없으면 load가 안내한다', HOOK_TIMEOUT, async ($, on) => {
     const path = `${DIR}/handoff/20261011-1800.md`
     const latest = { path, summary: '요약', createdAt: 1 }
     const world = engine(on, { 'p/b1a59c26/m7/latest': latest })
@@ -356,7 +359,7 @@ describe('수동 실행과 load', () => {
     expect(out.text).toContain(path)
   })
 
-  test('store에 프로젝트 밖 경로가 들어 있으면 /tk-handoff load가 missing으로 거부한다', async ($, on) => {
+  test('store에 프로젝트 밖 경로가 들어 있으면 /tk-handoff load가 missing으로 거부한다', HOOK_TIMEOUT, async ($, on) => {
     const outside = 'C:/other/secret.md'
     const world = engine(on, { 'p/b1a59c26/m7/latest': { path: outside, summary: '외부', createdAt: 1 } })
     world.files.set(outside, '민감 정보')
@@ -371,7 +374,7 @@ describe('수동 실행과 load', () => {
 })
 
 describe('/clear 뒤 복원', () => {
-  test('state가 비어 있으면(session.start 없음) 첫 프롬프트에서 최신본을 다시 안내한다', async ($, on) => {
+  test('state가 비어 있으면(session.start 없음) 첫 프롬프트에서 최신본을 다시 안내한다', HOOK_TIMEOUT, async ($, on) => {
     const path = `${DIR}/handoff/20261011-1800.md`
     const world = engine(on, { 'p/b1a59c26/m7/latest': { path, summary: '요약', createdAt: 1 } })
     world.files.set(path, '이전 문서')
@@ -384,7 +387,7 @@ describe('/clear 뒤 복원', () => {
 })
 
 describe('빈 store 첫 사용', () => {
-  test('읽기는 쓰지 않고, 임계치 설정과 첫 생성이 각자의 키를 만든다', async ($, on) => {
+  test('읽기는 쓰지 않고, 임계치 설정과 첫 생성이 각자의 키를 만든다', HOOK_TIMEOUT, async ($, on) => {
     const sets: { key: string; value: unknown }[] = []
     engine(on, {}, sets)
     mock.clock(on, { now: new Date(2026, 9, 12, 9, 5).getTime() })

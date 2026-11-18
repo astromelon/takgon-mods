@@ -4,6 +4,9 @@ import type { Engine } from 'claude-code/testing'
 
 import { projectId } from '../src/shared/keys'
 
+/** 훅 테스트 시간 제한. 킷 기본 5초는 외부 부하가 겹치면 넘길 수 있다(스위트 3개 동시 실행에서 최대 6.7초 실측). 훅 예산 10초보다 길어, 멈춘 훅은 10초에 건너뛰어진 뒤 단언에서 걸린다. */
+const HOOK_TIMEOUT = { timeoutMs: 15_000 } as const
+
 const START = { cwd: 'C:/proj', surface: 'terminal', isInteractive: true } as const
 
 /**
@@ -48,7 +51,7 @@ const mods = ($: Engine, args = '') =>
   })
 
 describe('/mods 명령 등록 상태', () => {
-  test('모듈 줄마다 명령 등록 성공(✓)·거부(✗와 사유)를 함께 보여준다', async ($, on) => {
+  test('모듈 줄마다 명령 등록 성공(✓)·거부(✗와 사유)를 함께 보여준다', HOOK_TIMEOUT, async ($, on) => {
     engine(on, ['browse'])
     const clock = mock.clock(on)
     mock.store(on)
@@ -65,7 +68,7 @@ describe('/mods 명령 등록 상태', () => {
     expect(text).not.toMatch(/- i18n .*✓/)
   })
 
-  test('/clear 뒤처럼 state가 비어 있으면 프로젝트 store의 마지막 등록 결과로 보여준다', async ($, on) => {
+  test('/clear 뒤처럼 state가 비어 있으면 프로젝트 store의 마지막 등록 결과로 보여준다', HOOK_TIMEOUT, async ($, on) => {
     engine(on, [])
     mock.store(on, {
       [`p/${projectId('C:/proj')}/core/commands`]: {
@@ -83,7 +86,7 @@ describe('/mods 명령 등록 상태', () => {
 })
 
 describe('모듈 초기화 격리', () => {
-  test('한 모듈의 명령 이름이 사용자 명령과 겹쳐 거부돼도 나머지 모듈 명령은 모두 등록된다', async ($, on) => {
+  test('한 모듈의 명령 이름이 사용자 명령과 겹쳐 거부돼도 나머지 모듈 명령은 모두 등록된다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, ['handoff', 'tk-handoff'])
     const clock = mock.clock(on)
     mock.store(on)
@@ -98,7 +101,7 @@ describe('모듈 초기화 격리', () => {
     }
   })
 
-  test('등록이 거부된 명령마다 이름과 사유를 toast로 1회 알리고, 다른 모듈 등록은 계속된다', async ($, on) => {
+  test('등록이 거부된 명령마다 이름과 사유를 toast로 1회 알리고, 다른 모듈 등록은 계속된다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, ['browse', 'issue'])
     const clock = mock.clock(on)
     mock.store(on)
@@ -114,7 +117,7 @@ describe('모듈 초기화 격리', () => {
     expect(world.listed).toContain('edit')
   })
 
-  test('거부가 없으면 등록 실패 toast가 없다', async ($, on) => {
+  test('거부가 없으면 등록 실패 toast가 없다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, [])
     const clock = mock.clock(on)
     mock.store(on)
@@ -126,7 +129,7 @@ describe('모듈 초기화 격리', () => {
     expect(world.toasts.filter(text => text.includes('등록하지 못했습니다'))).toEqual([])
   })
 
-  test('코어 설정을 store에서 읽지 못해도 /mods를 등록하고 다른 모듈 초기화는 계속된다', async ($, on) => {
+  test('코어 설정을 store에서 읽지 못해도 /mods를 등록하고 다른 모듈 초기화는 계속된다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, [])
     const clock = mock.clock(on)
     on('store.get', ($, e) => (e.key === 'g/core/modules' ? { deny: 'store unreadable' } : { value: undefined }))
@@ -141,7 +144,7 @@ describe('모듈 초기화 격리', () => {
     }
   })
 
-  test('M7 명령은 사용자 /handoff 스킬과 겹치지 않게 tk-handoff로 등록한다', async ($, on) => {
+  test('M7 명령은 사용자 /handoff 스킬과 겹치지 않게 tk-handoff로 등록한다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, [])
     const clock = mock.clock(on)
     mock.store(on)

@@ -11,6 +11,9 @@ import {
   splitMermaid,
 } from '../src/m8-diagram/mermaid'
 
+/** 훅 테스트 시간 제한. 킷 기본 5초는 외부 부하가 겹치면 넘길 수 있다(스위트 3개 동시 실행에서 최대 6.7초 실측). 훅 예산 10초보다 길어, 멈춘 훅은 10초에 건너뛰어진 뒤 단언에서 걸린다. */
+const HOOK_TIMEOUT = { timeoutMs: 15_000 } as const
+
 const FLOW = 'graph TD\n  A-->B'
 const ANSWER = ['앞 문단', '', '```mermaid', FLOW, '```', '', '뒤 문단'].join('\n')
 const HASH = diagramHash(FLOW)
@@ -147,7 +150,7 @@ describe('cmd 재시도 판정(순수)', () => {
 })
 
 describe('turn.complete 사전 렌더', () => {
-  test('mmdc 성공: svg·png를 만들고 같은 코드는 다시 렌더하지 않는다', async ($, on) => {
+  test('mmdc 성공: svg·png를 만들고 같은 코드는 다시 렌더하지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, 'ok')
     mock.store(on)
     await $.session.start(START)
@@ -167,7 +170,7 @@ describe('turn.complete 사전 렌더', () => {
     expect(world.toasts).toEqual([])
   })
 
-  test('svg·png 캐시가 있어도 .mmd 원본 내용이 다르면 mmdc를 다시 실행한다', async ($, on) => {
+  test('svg·png 캐시가 있어도 .mmd 원본 내용이 다르면 mmdc를 다시 실행한다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, 'ok')
     world.files.set(`${DIR}/${HASH}.svg`, '<svg>stale</svg>')
     world.files.set(`${DIR}/${HASH}.png`, 'STALE')
@@ -185,7 +188,7 @@ describe('turn.complete 사전 렌더', () => {
     ])
   })
 
-  test('mmdc 실행 불가: cmd /c로 1회 재시도하고 toast는 원인별 1회', async ($, on) => {
+  test('mmdc 실행 불가: cmd /c로 1회 재시도하고 toast는 원인별 1회', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, 'missing')
     mock.store(on)
     await $.session.start(START)
@@ -204,7 +207,7 @@ describe('turn.complete 사전 렌더', () => {
     expect(world.toasts[0]).toContain('npm i -g @mermaid-js/mermaid-cli')
   })
 
-  test('turn.complete는 렌더를 기다리지 않고, 진행 중이면 겹쳐 돌리지 않는다', async ($, on) => {
+  test('turn.complete는 렌더를 기다리지 않고, 진행 중이면 겹쳐 돌리지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, 'ok')
     mock.store(on)
     await $.session.start(START)
@@ -217,7 +220,7 @@ describe('turn.complete 사전 렌더', () => {
     expect(world.runs).toHaveLength(2)
   })
 
-  test('렌더 중에 끝난 다른 턴의 다이어그램도 앞 렌더가 끝난 뒤 렌더한다', async ($, on) => {
+  test('렌더 중에 끝난 다른 턴의 다이어그램도 앞 렌더가 끝난 뒤 렌더한다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, 'ok')
     mock.store(on)
     await $.session.start(START)
@@ -236,7 +239,7 @@ describe('turn.complete 사전 렌더', () => {
     ])
   })
 
-  test('모듈이 꺼져 있으면 아무것도 실행하지 않는다', async ($, on) => {
+  test('모듈이 꺼져 있으면 아무것도 실행하지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, 'ok')
     mock.store(on, { 'g/core/modules': { diagram: false } })
     await $.session.start(START)
@@ -250,7 +253,7 @@ describe('turn.complete 사전 렌더', () => {
 })
 
 describe('AssistantMessage 표시', () => {
-  test('렌더 결과가 없으면 원본 Code, 앞뒤 본문은 엔진이 그린다', async ($, on) => {
+  test('렌더 결과가 없으면 원본 Code, 앞뒤 본문은 엔진이 그린다', HOOK_TIMEOUT, async ($, on) => {
     engineMessage(on)
     engine(on, 'ok')
     mock.store(on)
@@ -265,7 +268,7 @@ describe('AssistantMessage 표시', () => {
     }
   })
 
-  test('mmdc 실패 결과도 원본 Code로 보이고 toast 1회', async ($, on) => {
+  test('mmdc 실패 결과도 원본 Code로 보이고 toast 1회', HOOK_TIMEOUT, async ($, on) => {
     engineMessage(on)
     const world = engine(on, 'fail')
     mock.store(on)
@@ -282,7 +285,7 @@ describe('AssistantMessage 표시', () => {
     expect(world.toasts[0]).toContain('Parse error')
   })
 
-  test('desktop은 Svg, terminal은 png Image로 그리고 경로를 복사한다', async ($, on) => {
+  test('desktop은 Svg, terminal은 png Image로 그리고 경로를 복사한다', HOOK_TIMEOUT, async ($, on) => {
     engineMessage(on)
     const world = engine(on, 'ok')
     mock.store(on)
@@ -310,7 +313,7 @@ describe('AssistantMessage 표시', () => {
     expect(await terminal.find({ type: 'Code' })).toBeUndefined()
   })
 
-  test('원본 보기 토글은 Code와 다이어그램을 오간다', async ($, on) => {
+  test('원본 보기 토글은 Code와 다이어그램을 오간다', HOOK_TIMEOUT, async ($, on) => {
     engineMessage(on)
     engine(on, 'ok')
     mock.store(on)
@@ -328,7 +331,7 @@ describe('AssistantMessage 표시', () => {
     expect(await ui.find({ type: 'Svg' })).toBeDefined()
   })
 
-  test('mermaid 블록이 없으면 엔진 표시를 그대로 둔다', async ($, on) => {
+  test('mermaid 블록이 없으면 엔진 표시를 그대로 둔다', HOOK_TIMEOUT, async ($, on) => {
     engineMessage(on)
     engine(on, 'ok')
     mock.store(on)

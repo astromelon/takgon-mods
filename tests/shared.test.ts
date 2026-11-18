@@ -8,6 +8,9 @@ import { parseModsArgs, parsePercent, refusalReason, toPercent } from '../src/sh
 import { toTasks, toggleTask } from '../src/shared/tasks'
 import { fit, isWide } from '../src/shared/text'
 
+/** 훅 테스트 시간 제한. 킷 기본 5초는 외부 부하가 겹치면 넘길 수 있다(스위트 3개 동시 실행에서 최대 6.7초 실측). 훅 예산 10초보다 길어, 멈춘 훅은 10초에 건너뛰어진 뒤 단언에서 걸린다. */
+const HOOK_TIMEOUT = { timeoutMs: 15_000 } as const
+
 const mods = ($: Engine, args: string) =>
   $.command.run({
     command: 'mods',
@@ -99,7 +102,7 @@ describe('parseModsArgs', () => {
 })
 
 describe('/mods 명령', () => {
-  test('기본값은 전부 on이고 토글하면 목록에 반영된다', async ($, on) => {
+  test('기본값은 전부 on이고 토글하면 목록에 반영된다', HOOK_TIMEOUT, async ($, on) => {
     mock.store(on)
 
     const listed = await mods($, '')
@@ -113,7 +116,7 @@ describe('/mods 명령', () => {
     expect(after.text).toContain(`- diagram (${t('ko', 'module.diagram')}): ${t('ko', 'mods.state.on')}`)
   })
 
-  test('store에 저장된 설정을 읽는다(g/ 네임스페이스)', async ($, on) => {
+  test('store에 저장된 설정을 읽는다(g/ 네임스페이스)', HOOK_TIMEOUT, async ($, on) => {
     mock.store(on, { 'g/core/modules': { panel: false }, 'g/i18n/lang': 'en' })
 
     const listed = await mods($, '')
@@ -122,7 +125,7 @@ describe('/mods 명령', () => {
     expect(listed.text).toContain(`- panel (${t('en', 'module.panel')}): off`)
   })
 
-  test('lang en 전환 후 출력이 영어가 된다', async ($, on) => {
+  test('lang en 전환 후 출력이 영어가 된다', HOOK_TIMEOUT, async ($, on) => {
     mock.store(on)
 
     await mods($, 'lang en')
@@ -131,7 +134,7 @@ describe('/mods 명령', () => {
     expect(en.text).toContain(t('en', 'mods.title'))
   })
 
-  test('잘못된 인자는 사용법을 보여준다', async ($, on) => {
+  test('잘못된 인자는 사용법을 보여준다', HOOK_TIMEOUT, async ($, on) => {
     mock.store(on)
 
     const usage = await mods($, 'panel maybe')
@@ -141,7 +144,7 @@ describe('/mods 명령', () => {
 })
 
 describe('빈 store 첫 사용', () => {
-  test('/mods 토글과 lang 전환이 g/ 키를 만든다', async ($, on) => {
+  test('/mods 토글과 lang 전환이 g/ 키를 만든다', HOOK_TIMEOUT, async ($, on) => {
     const sets: { key: string; value: unknown }[] = []
     const data = new Map<string, unknown>()
     on('store.get', ($, e) => ({ value: data.get(e.key) }))

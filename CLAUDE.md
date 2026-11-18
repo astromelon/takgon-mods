@@ -79,6 +79,7 @@ CI(`.github/workflows/ci.yml`)는 Windows에서 Claude Code 2.1.327 고정으로
 ## 테스트
 
 - `claude-code/testing` 킷(`describe`/`test`/`expect`/`mock`) 사용. 테스트의 `$`에는 `store`가 없으므로 `mock.store(on, 초기값)`으로 주입.
+- 훅 테스트(`($, on)` 본문)는 파일마다 둔 `HOOK_TIMEOUT`(15초)을 넘긴다. 킷은 파일들을 동시에 돌리므로 외부 부하가 겹치면 기본 5초를 넘길 수 있다(2026-11-18, 8코어 PC: 단독 실행 4회 0건, 스위트 3개 동시 실행 6회 모두 214건 중 20~26건 실패 — 시간 초과, 1회는 그 여파 rejection 1건 포함). 새 훅 테스트도 같이 쓴다.
 - 외부 연동은 하위 훅으로 mock하고, 엔진 거부는 `{ deny }`로 답한다(엔진 제약 7번). surface별 렌더는 `['terminal', 'desktop'] as const`로 반복해 검증(M4·M6·M8).
 - `tools/test-store-backup.ps1`은 `tools/store-backup.ps1`을 가짜 설정 폴더에서 시험한다(실제 세션·`~/.claude` 미사용). CI가 PowerShell 5.1과 7로
   돌리고, 로컬은 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-store-backup.ps1`(7은 `-Shell pwsh.exe`).

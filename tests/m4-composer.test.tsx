@@ -16,6 +16,9 @@ import {
   shouldFork,
 } from '../src/m4-composer/logic'
 
+/** 훅 테스트 시간 제한. 킷 기본 5초는 외부 부하가 겹치면 넘길 수 있다(스위트 3개 동시 실행에서 최대 6.7초 실측). 훅 예산 10초보다 길어, 멈춘 훅은 10초에 건너뛰어진 뒤 단언에서 걸린다. */
+const HOOK_TIMEOUT = { timeoutMs: 15_000 } as const
+
 const task = (id: string, text: string, isDone = false, createdAt = 0): TaskItem => ({
   id,
   text,
@@ -263,7 +266,7 @@ const textOf = (node: unknown): string => {
 }
 
 describe('AbovePrompt band', () => {
-  test('표시할 것이 없거나 설문 중이면 엔진 band를 그린다', async ($, on) => {
+  test('표시할 것이 없거나 설문 중이면 엔진 band를 그린다', HOOK_TIMEOUT, async ($, on) => {
     engine(on, { [TASKS_KEY]: [{ id: 'a', text: '할 일', kind: 'checkbox', isDone: false, createdAt: 1 }] })
     await $.session.start(START)
     for (const surface of SURFACES) {
@@ -274,7 +277,7 @@ describe('AbovePrompt band', () => {
     }
   })
 
-  test('비어 있으면 next', async ($, on) => {
+  test('비어 있으면 next', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     await $.session.start(START)
     for (const surface of SURFACES) {
@@ -283,7 +286,7 @@ describe('AbovePrompt band', () => {
     }
   })
 
-  test('PR 배지를 표시한다', async ($, on) => {
+  test('PR 배지를 표시한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on)
     // M5가 채우는 pr state를 엔진 자리에서 답한다.
     const pr = { number: 12, url: 'u', reviewDecision: 'APPROVED', checks: 'failure' }
@@ -303,7 +306,7 @@ describe('AbovePrompt band', () => {
     }
   })
 
-  test('미완료 최대 3개를 그리고, 텍스트는 제출·체크는 토글 후 저장한다', async ($, on) => {
+  test('미완료 최대 3개를 그리고, 텍스트는 제출·체크는 토글 후 저장한다', HOOK_TIMEOUT, async ($, on) => {
     const stored = [1, 2, 3, 4].map(i => ({ id: `t${i}`, text: `작업 ${i}`, kind: 'checkbox', isDone: false, createdAt: i }))
     const world = engine(on, { [TASKS_KEY]: stored })
     await $.session.start(START)
@@ -323,7 +326,7 @@ describe('AbovePrompt band', () => {
     expect(await ui.find({ key: 'task-t1' })).toBeDefined()
   })
 
-  test('할 일 토글 시 다른 세션이 store에 추가한 할 일이 유실되지 않는다', async ($, on) => {
+  test('할 일 토글 시 다른 세션이 store에 추가한 할 일이 유실되지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const data = new Map<string, unknown>([
       [TASKS_KEY, [task('t1', '기존 일', false, 1)]],
     ])
@@ -357,7 +360,7 @@ describe('AbovePrompt band', () => {
 })
 
 describe('/clear 뒤 복원', () => {
-  test('state가 비어 있으면(session.start 없음) 첫 명령에서 store의 task를 복원한다', async ($, on) => {
+  test('state가 비어 있으면(session.start 없음) 첫 명령에서 store의 task를 복원한다', HOOK_TIMEOUT, async ($, on) => {
     engine(on, { [TASKS_KEY]: [{ id: 'k1', text: '저장된 할 일', kind: 'checkbox', isDone: false, createdAt: 1 }] })
     mock.clock(on)
 
@@ -374,7 +377,7 @@ describe('/clear 뒤 복원', () => {
 })
 
 describe('Next-steps', () => {
-  test('도구를 쓴 턴에만 fork하고 2분 간격을 지키며, 결과는 중복 없이 band에 보인다', async ($, on) => {
+  test('도구를 쓴 턴에만 fork하고 2분 간격을 지키며, 결과는 중복 없이 band에 보인다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, { [TASKS_KEY]: [{ id: 'a', text: 'Run tests', kind: 'checkbox', isDone: false, createdAt: 1 }] })
     const clock = mock.clock(on, { now: 1_000_000 })
     await $.session.start(START)
@@ -407,7 +410,7 @@ describe('Next-steps', () => {
     expect(labels).toEqual(['테스트 추가', 'Run tests'])
   })
 
-  test('nothing-to-fork·모듈 off는 조용히 무시한다', async ($, on) => {
+  test('nothing-to-fork·모듈 off는 조용히 무시한다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, { 'g/core/modules': { composer: false } })
     mock.clock(on)
     await $.session.start(START)
@@ -417,7 +420,7 @@ describe('Next-steps', () => {
     expect(world.forks).toHaveLength(0)
   })
 
-  test('fork 실패면 task를 추가하지 않는다', async ($, on) => {
+  test('fork 실패면 task를 추가하지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on, {}, false)
     const clock = mock.clock(on)
     await $.session.start(START)
@@ -432,7 +435,7 @@ describe('Next-steps', () => {
 describe('Prompt-coach', () => {
   const AMBIGUOUS = '{"ambiguous":true,"refined":"src/app.ts의 로그인 버그를 고쳐줘"}'
 
-  test('원문 그대로를 고르면 원문이 들어간다', async ($, on) => {
+  test('원문 그대로를 고르면 원문이 들어간다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     coach(on, world, AMBIGUOUS, '원문 그대로')
     await $.session.start(START)
@@ -442,7 +445,7 @@ describe('Prompt-coach', () => {
     expect(world.asks[0]?.question).toContain('로그인 버그')
   })
 
-  test('다듬은 버전을 고르면 refined로 바꿔 넘긴다', async ($, on) => {
+  test('다듬은 버전을 고르면 refined로 바꿔 넘긴다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     coach(on, world, AMBIGUOUS, '다듬은 버전')
     await $.session.start(START)
@@ -451,7 +454,7 @@ describe('Prompt-coach', () => {
     expect(world.submitted.at(-1)?.text).toBe('src/app.ts의 로그인 버그를 고쳐줘')
   })
 
-  test('취소를 고르면 drop한다', async ($, on) => {
+  test('취소를 고르면 drop한다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     coach(on, world, AMBIGUOUS, '취소')
     await $.session.start(START)
@@ -460,7 +463,7 @@ describe('Prompt-coach', () => {
     expect(world.submitted).toHaveLength(0)
   })
 
-  test('ask가 reject하면 원문 통과', async ($, on) => {
+  test('ask가 reject하면 원문 통과', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     coach(on, world, AMBIGUOUS, null)
     await $.session.start(START)
@@ -468,7 +471,7 @@ describe('Prompt-coach', () => {
     expect(out.text).toBe('고쳐줘')
   })
 
-  test('명확·구체적·파싱 실패·코치 off면 묻지 않는다', async ($, on) => {
+  test('명확·구체적·파싱 실패·코치 off면 묻지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     coach(on, world, 'not json', '취소')
     await $.session.start(START)
@@ -489,7 +492,7 @@ describe('Prompt-coach', () => {
     expect(state.text).toBe('프롬프트 코치: 꺼짐')
   })
 
-  test('handoff load 대기 중이면 묻지 않고, 첨부 뒤 다음 프롬프트는 다시 판정한다', async ($, on) => {
+  test('handoff load 대기 중이면 묻지 않고, 첨부 뒤 다음 프롬프트는 다시 판정한다', HOOK_TIMEOUT, async ($, on) => {
     const handoffPath = 'C:/proj/.claude/takgon/handoff/20261012-1430.md'
     const latestKey = projectKey(projectId('C:/proj'), 'm7', 'latest')
     const world = engine(on, { [latestKey]: { path: handoffPath, summary: '요약', createdAt: 1 } })
@@ -508,7 +511,7 @@ describe('Prompt-coach', () => {
     expect(world.asks).toHaveLength(1)
   })
 
-  test('M7을 끄면 load 대기 플래그가 남아 있어도 다시 판정한다', async ($, on) => {
+  test('M7을 끄면 load 대기 플래그가 남아 있어도 다시 판정한다', HOOK_TIMEOUT, async ($, on) => {
     const handoffPath = 'C:/proj/.claude/takgon/handoff/20261012-1430.md'
     const latestKey = projectKey(projectId('C:/proj'), 'm7', 'latest')
     const world = engine(on, { [latestKey]: { path: handoffPath, summary: '요약', createdAt: 1 } })
@@ -525,7 +528,7 @@ describe('Prompt-coach', () => {
     expect(world.completes).toBe(1)
   })
 
-  test('/edit 대상이 있으면 묻지 않는다', async ($, on) => {
+  test('/edit 대상이 있으면 묻지 않는다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     on('fs.read', () => ({ value: 'line1\nline2\n' }))
     coach(on, world, AMBIGUOUS, '취소')
@@ -538,7 +541,7 @@ describe('Prompt-coach', () => {
     expect(world.completes).toBe(0)
   })
 
-  test('M3를 끄면 /edit 대상이 남아 있어도 다시 판정한다', async ($, on) => {
+  test('M3를 끄면 /edit 대상이 남아 있어도 다시 판정한다', HOOK_TIMEOUT, async ($, on) => {
     const world = engine(on)
     on('fs.read', () => ({ value: 'line1\nline2\n' }))
     coach(on, world, AMBIGUOUS, '취소')
@@ -553,7 +556,7 @@ describe('Prompt-coach', () => {
 })
 
 describe('빈 store 첫 사용', () => {
-  test('읽기는 쓰지 않고, 코치 설정과 첫 Next-steps가 각자의 키를 만든다', async ($, on) => {
+  test('읽기는 쓰지 않고, 코치 설정과 첫 Next-steps가 각자의 키를 만든다', HOOK_TIMEOUT, async ($, on) => {
     const sets: { key: string; value: unknown }[] = []
     const world = engine(on, {}, true, sets)
     const clock = mock.clock(on, { now: 1_000_000 })
