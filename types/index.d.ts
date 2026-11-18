@@ -172,6 +172,10 @@ declare module 'claude-code' {
       handoff: HandoffInfo | null
       handoffPending: boolean
       handoffFired: boolean
+      /** 새 대화 자동 첨부 판정: 아직 안 함 / 이번 프롬프트에 첨부 예약 / 끝남. `/clear`로 state가 비면 'unchecked'로 돌아간다. */
+      handoffAuto: 'unchecked' | 'armed' | 'done'
+      /** 이번 대화가 시작된 시각(ms). 새 세션의 restore·`/clear` 뒤 첫 ensureRestored에서 기록. 0이면 아직 모름. 이보다 늦게 만든 문서(같은 프로젝트의 다른 진행 중 세션 문서)는 자동 첨부하지 않는다. */
+      handoffSince: number
 
       // M2 browser
       browser: BrowserInfo | null

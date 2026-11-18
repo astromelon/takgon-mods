@@ -7,7 +7,7 @@ import { registerEdit } from './m3-edit'
 import { registerComposer } from './m4-composer'
 import { registerIntegrations } from './m5-integrations'
 import { registerPanel } from './m6-panel'
-import { registerHandoff } from './m7-handoff'
+import { registerHandoff, registerHandoffAutoLoad } from './m7-handoff'
 import { registerDiagram } from './m8-diagram'
 
 /**
@@ -21,6 +21,8 @@ export const register: Register = on => {
   registerCore(on)
   registerI18n(on)
   registerIntegrations(on)
+  // M7 자동 첨부 예약: M4 코치가 handoffPending을 보고 건너뛰도록 M4보다 먼저
+  registerHandoffAutoLoad(on)
   registerComposer(on)
   registerPanel(on)
   registerHandoff(on)

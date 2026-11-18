@@ -140,7 +140,7 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
   - 렌더러는 checkbox(기본), issue, pr 중에서 고른다. 선택하면 `$.prompt.submit`으로 제출한다.
   - 체크 상태는 `$.store`(`p/{projectId}/m4/tasks`)에 영속화하고, M6 Tasks 탭과 같은 `$.state` 값을 공유한다.
 - Prompt-coach: `prompt.submit`에서 모호한 요청을 판정한다.
-  - **건너뛰는 경우 [추가]**: `e.origin`이 사용자 본인이 아님(플러그인·Next-steps 제출 포함 → 루프 방지), 슬래시 명령, 휴리스틱 통과(짧은 확정 요청 등), 다른 모듈이 맥락을 붙일 예정인 프롬프트 **[수정: 실측]**(M7 `/tk-handoff load` 대기, M3 `/edit` 대상 지정, M2 콘솔 에러 첨부 예정 — 대기·지정 상태 기준이며 실제 첨부 여부와 무관).
+  - **건너뛰는 경우 [추가]**: `e.origin`이 사용자 본인이 아님(플러그인·Next-steps 제출 포함 → 루프 방지), 슬래시 명령, 휴리스틱 통과(짧은 확정 요청 등), 다른 모듈이 맥락을 붙일 예정인 프롬프트 **[수정: 실측]**(M7 `/tk-handoff load` 대기·M7 새 대화 자동 첨부 예약, M3 `/edit` 대상 지정, M2 콘솔 에러 첨부 예정 — 대기·지정 상태 기준이며 실제 첨부 여부와 무관).
   - 판정과 다듬기를 `$.model.complete` **1회**(작은 모델, `timeoutMs` 4000, JSON `{ambiguous, refined}`)로 처리한다. 실패·타임아웃은 원문 통과.
   - 모호하면 `$.ui.ask`로 [원문 그대로 / 다듬은 버전 / 취소]를 묻는다. 자동 치환은 금지한다.
     `$.ui.ask`는 dismiss·`-p` 실행에서 reject하므로 catch 시 원문 통과.
@@ -169,6 +169,7 @@ C:\dev\takgon-mods\                 # 프로젝트 저장소 밖에 둔다
 - 새 세션: `session.start`/`classic.SessionStart`에서 최신 handoff가 있으면 toast로 안내한다.
   `/tk-handoff load`는 다음 `prompt.submit` 1회에 파일 내용을 `context`로 첨부한다(대기 플래그는 `$.state`).
   **[수정: 실측]** 첨부할 때 출처(파일 경로) 안내와 동적 길이 코드 펜스로 감싼다(`handoffContext`). `/tk-handoff show`의 요약(300자)은 화면용이라 감싸지 않는다.
+  - **새 대화 자동 첨부 [추가]**: `/tk-handoff auto on|off`(전역 `g/m7/auto`, 기본 켜짐). 새 대화(새 세션·`/clear`, transcript에 assistant 행 없음)의 첫 composer 프롬프트(모델 턴이 없는 로컬 명령 등 `command`·`isMeta` 입력은 판정을 미루고 건너뜀)에 최신 문서를 1회 자동 첨부한다. 대상 조건은 경로 검증·빈 문서 제외·24시간 이내·`p/{pid}/m7/consumed`와 다른 경로·이번 대화 시작 시각(`handoffSince`) 이전 생성(다른 진행 중 세션 문서 제외). 수동 `/tk-handoff load`가 우선하며, 실제 첨부 시(자동·수동 모두) `consumed`를 기록한다. 자동 첨부가 켜져 있으면 세션 시작 안내 toast를 미루고, 자동 첨부할 때 안내 toast를 1회 띄우며, 첨부하지 않기로 판정하면(만료·`--resume`·다른 세션 문서 등, `consumed` 제외) 첫 프롬프트에 기존 `/tk-handoff load` 안내 toast를 1회 띄운다. 판정 상태는 `handoffAuto`(`unchecked`·`armed`·`done`)로 관리하고, M4보다 먼저 실행되는 예약 훅에서 `handoffPending`을 세운다.
 
 ## M2. Inline Browser **[수정: 범위 축소]**
 - URL 감지: `tool.call`(Bash) 결과 출력에서 `https?://(localhost|127\.0\.0\.1):\d+` 패턴을 찾아 `$.state`에 최근 URL로 둔다.
@@ -206,7 +207,7 @@ matcher 없는 등록은 이벤트마다 플러그인 전체에 하나만 허용
 | `session.start` | 없음(core) / `{ isInteractive: true }` | core / 각 모듈 |
 | `prompt.submit`·`command.run` | 없음(core, 복원 확인 후 `next`) | core |
 | `turn.complete` | `{ reason: 'answer' }` | M4, M5, M7, M8 |
-| `prompt.submit` | `{ origin: { kind: 'composer' } }` | M4, M7, M2, M3 (등록 순서대로) |
+| `prompt.submit` | `{ origin: { kind: 'composer' } }` | M5, M7(자동 첨부 예약), M4, M6, M7, M2, M3 (등록 순서대로) |
 | `tool.call` | `{ tool }` | M2(Bash), M3(Edit, Write) |
 | `session.measure`, `agent.spawn` | 없음 | M6 |
 **`classic.*`는 쓰지 않는다 [수정: 실측]**: 내장 보안 플러그인(`cc-plugin-sec-default`, 최상위 tier)이 `next.to`로 user tier를

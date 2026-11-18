@@ -8,7 +8,7 @@ Claude Code용 개인 생산성 mods 플러그인. 모듈 8개를 한 플러그�
 | integrations | `/issue` | 현재 브랜치 PR(GitHub, `gh`)·MR(GitLab, `glab`) 상태 폴링, Linear 이슈 검색·연결·상태 변경 |
 | composer | `/coach` | 프롬프트 위 band: PR/MR 배지, 다음 작업 후보, 모호한 요청 다듬기 |
 | panel | `/panel`, `/pin` | 작업 패널(핀·할 일·서브에이전트·사용량·인수인계·게이트), 사용량 경고(`/panel threshold`), 게이트 동기화 실패 알림 |
-| handoff | `/tk-handoff` | 컨텍스트 사용률 임계치(기본 75%)에서 인수인계 문서 자동 작성, 다음 프롬프트에 첨부 |
+| handoff | `/tk-handoff` | 컨텍스트 사용률 임계치(기본 75%)에서 인수인계 문서 자동 작성, 새 대화 첫 프롬프트에 자동 첨부(`/tk-handoff auto off`로 끔)·`/tk-handoff load`로 수동 첨부 |
 | browser | `/browse` | Bash 출력의 localhost URL 감지, 스크린샷·콘솔 에러 수집 |
 | edit | `/edit` | 수정 대상(파일 행 범위·선택 영역·DOM 요소) 지정, 범위 밖 Edit·Write 차단, 파이프라인 계획서 범위 밖 수정 차단 |
 | diagram | – | 응답의 mermaid 블록을 SVG/PNG로 렌더 |
@@ -47,6 +47,13 @@ Claude Code용 개인 생산성 mods 플러그인. 모듈 8개를 한 플러그�
 - 두 값 모두 모든 프로젝트에 공통으로 저장된다(`g/m6/threshold`, `g/m7/threshold`).
 - 현재 사용량 경고 임계치는 `/panel usage` 탭에서도 볼 수 있다.
 - 인수인계가 사용량 경고보다 먼저 일어나게 하려면 `/tk-handoff` 임계치를 `/panel` 임계치보다 낮게 둔다.
+
+### 인수인계 새 대화 자동 첨부
+
+- `/tk-handoff auto [on|off]`: 새 세션이나 `/clear` 뒤 첫 프롬프트에 24시간 이내의 최신 인수인계 문서를 한 번 자동으로 첨부한다(기본 켜짐, 문서당 1회).
+- `--resume` 등 이미 대화가 오간 세션에는 자동으로 붙이지 않고 `/tk-handoff load` 안내 toast만 1회 띄운다. 설정은 전역 키 `g/m7/auto`에 저장된다.
+- 주의: 업그레이드 직후에도 24시간 이내의 기존 인수인계 문서가 자동 첨부 대상이 된다.
+- 주의: 같은 프로젝트에서 문서가 만들어진 뒤 새로 연 세션이나 `/clear`한 대화에는 붙을 수 있다(그 전에 시작된 대화에는 붙지 않는다).
 
 ### ai-global-pipeline 연동
 

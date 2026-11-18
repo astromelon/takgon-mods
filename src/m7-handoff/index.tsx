@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { CommandSpec, EngineInterface, On } from 'claude-code'
+import type { CommandSpec, EngineInterface, On, PromptSubmitInput } from 'claude-code'
 
 import type { CommandRegistration, HandoffInfo, Lang } from '../../types'
 import { t, toLang } from '../shared/i18n'
@@ -13,10 +13,12 @@ import {
   formatTime,
   handoffContext,
   handoffFileName,
+  isAutoCandidate,
   isHandoffPath,
   parseHandoffArgs,
   shouldTrigger,
   summarize,
+  toAutoLoad,
   toHandoffInfo,
   toThreshold,
 } from './logic'
@@ -33,6 +35,8 @@ const tasksAtom = atom({ plugin: 'takgon-mods', key: 'tasks' } as const, [])
 const handoffAtom = atom({ plugin: 'takgon-mods', key: 'handoff' } as const, null)
 const pendingAtom = atom({ plugin: 'takgon-mods', key: 'handoffPending' } as const, false)
 const firedAtom = atom({ plugin: 'takgon-mods', key: 'handoffFired' } as const, false)
+const autoAtom = atom({ plugin: 'takgon-mods', key: 'handoffAuto' } as const, 'unchecked')
+const sinceAtom = atom({ plugin: 'takgon-mods', key: 'handoffSince' } as const, 0)
 const restoredAtom = atom({ plugin: 'takgon-mods', key: 'restored' } as const, [])
 
 /**
@@ -69,6 +73,9 @@ const registerCommand = async ($: EngineInterface, spec: CommandSpec): Promise<v
 /** 자동 인수인계 임계치(컨텍스트 %) 전역 store 키. 없으면 75. */
 const THRESHOLD_KEY = globalKey('m7', 'threshold')
 
+/** 새 대화 자동 첨부 on/off 전역 store 키. 없으면 기본 켜짐. */
+const AUTO_KEY = globalKey('m7', 'auto')
+
 /** 이 시간이 지나도 끝나지 않은 생성은 멈춘 것으로 보고 새로 시작한다(`$.model.fork`에는 시간 상한이 없다). */
 const GENERATING_STUCK_MS = 5 * 60_000
 
@@ -79,6 +86,10 @@ let autoFailures = 0
 /** 최신본 store 키: `p/{pid}/m7/latest`. */
 const latestKey = async ($: EngineInterface): Promise<string> =>
   projectKey(projectId(await $.session.root()), 'm7', 'latest')
+
+/** 마지막으로 첨부한 문서 경로 store 키: `p/{pid}/m7/consumed`. */
+const consumedKey = async ($: EngineInterface): Promise<string> =>
+  projectKey(projectId(await $.session.root()), 'm7', 'consumed')
 
 /**
  * 모듈 on/off·언어. 초기화 훅은 core보다 먼저 돌 수 있으므로 store를 직접 읽고,
@@ -136,7 +147,30 @@ const generate = async (
 const latest = async ($: EngineInterface): Promise<HandoffInfo | null> =>
   (await read($, handoffAtom)) ?? toHandoffInfo(await $.store.get(await latestKey($)))
 
-/** 최신본이 있으면 상태를 채우고 toast로 `/tk-handoff load`를 안내한다. */
+/** 새 대화 첫 프롬프트에 자동 첨부할 최신본이 유효하면 돌려주고, 아니면 null. */
+const autoCandidate = async ($: EngineInterface, now: number, since: number): Promise<HandoffInfo | null> => {
+  if (!toAutoLoad(await $.store.get(AUTO_KEY))) {
+    return null
+  }
+  const info = toHandoffInfo(await $.store.get(await latestKey($)))
+  if (info === null) {
+    return null
+  }
+  const consumed = await $.store.get(await consumedKey($))
+  if (!isAutoCandidate(info, consumed, now, since)) {
+    return null
+  }
+  const root = await $.session.root()
+  if (!isHandoffPath(root, info.path) || !(await $.fs.exists(info.path))) {
+    return null
+  }
+  if ((await $.fs.read(info.path)).trim() === '') {
+    return null
+  }
+  return info
+}
+
+/** 최신본이 있으면 상태를 채우고, 자동 첨부가 꺼져 있으면 toast로 `/tk-handoff load`를 안내한다. */
 const restore = async ($: EngineInterface): Promise<void> => {
   const { isOn: isEnabled, lang } = await settingsFromStore($)
   if (!isEnabled) {
@@ -147,7 +181,20 @@ const restore = async ($: EngineInterface): Promise<void> => {
     return
   }
   await update($, handoffAtom, () => info)
-  $.ui.toast(tr(lang, 'toast.available', { time: formatTime(info.createdAt) }))
+  let isAuto = false
+  try {
+    isAuto = toAutoLoad(await $.store.get(AUTO_KEY))
+  } catch {
+    // 설정을 못 읽으면 기존 안내 toast 경로로 둔다.
+  }
+  if (!isAuto) {
+    $.ui.toast(tr(lang, 'toast.available', { time: formatTime(info.createdAt) }))
+    try {
+      await update($, autoAtom, () => 'done')
+    } catch {
+      // 상태 기록 실패가 복원을 막지 않게 한다.
+    }
+  }
 }
 
 /**
@@ -161,6 +208,12 @@ const ensureRestored = async ($: EngineInterface): Promise<void> => {
   await update($, restoredAtom, list => (list.includes('m7') ? list : [...list, 'm7']))
   // 자동 생성 실패 횟수는 대화(세션 시작·`/clear` 뒤) 단위로 센다. 모듈 변수라 /clear 뒤에도 남기 때문에 여기서 되돌린다.
   autoFailures = 0
+  try {
+    const now = await $.clock.now()
+    await update($, sinceAtom, () => now)
+  } catch {
+    // 시각을 못 읽으면 0(시각 비교 생략)으로 둔다.
+  }
   try {
     await restore($)
   } catch {
@@ -180,12 +233,12 @@ const start = async ($: EngineInterface): Promise<void> => {
   await registerCommand($, {
     name: 'tk-handoff',
     description: tr(lang, 'cmd.description'),
-    argumentHint: '[show | load | threshold <1-99>]',
+    argumentHint: '[show | load | threshold <1-99> | auto on|off]',
   })
   await ensureRestored($)
 }
 
-/** `/tk-handoff [show|load|threshold]` 처리. 새 문서 생성(`create`)의 겹침 검사는 호출하는 훅이 한다. */
+/** `/tk-handoff [show|load|threshold|auto]` 처리. 새 문서 생성(`create`)의 겹침 검사는 호출하는 훅이 한다. */
 const runCommand = async ($: EngineInterface, args: string): Promise<string> => {
   const lang = await read($, langAtom)
   if (!(await isOn($))) {
@@ -196,6 +249,13 @@ const runCommand = async ($: EngineInterface, args: string): Promise<string> => 
     return tr(lang, 'cmd.usage')
   }
   if (typeof action === 'object') {
+    if (action.kind === 'auto') {
+      if (action.value !== null) {
+        await $.store.set(AUTO_KEY, action.value)
+      }
+      const isAuto = action.value ?? toAutoLoad(await $.store.get(AUTO_KEY))
+      return tr(lang, 'cmd.auto', { state: tr(lang, isAuto ? 'auto.on' : 'auto.off') })
+    }
     if (action.value !== null) {
       await $.store.set(THRESHOLD_KEY, action.value)
     }
@@ -251,26 +311,110 @@ const autoHandoff = async ($: EngineInterface): Promise<void> => {
   }
 }
 
+/**
+ * 새 대화 첫 composer 프롬프트에 최신본 자동 첨부를 예약한다(M4 코치보다 먼저 실행).
+ * 모델 턴이 없는 로컬 명령·meta 입력은 판정을 미루고, 수동 load나 이미 assistant 응답이 있는 대화에는 붙이지 않는다.
+ */
+const armAutoLoad = async ($: EngineInterface, e: PromptSubmitInput): Promise<void> => {
+  if (e.command !== undefined || e.isMeta === true) {
+    return
+  }
+  if ((await read($, autoAtom)) !== 'unchecked') {
+    return
+  }
+  await update($, autoAtom, () => 'done')
+  if (!(await isOn($)) || (await read($, pendingAtom))) {
+    return
+  }
+  try {
+    const now = await $.clock.now()
+    const info = await autoCandidate($, now, await read($, sinceAtom))
+    if (info !== null) {
+      const rows = await $.session.messages({ last: 20 })
+      if (Array.isArray(rows) && !rows.some(row => row.role === 'assistant')) {
+        await update($, handoffAtom, () => info)
+        await update($, pendingAtom, () => true)
+        await update($, autoAtom, () => 'armed')
+        return
+      }
+    }
+  } catch {
+    // clock·store·messages 조회 실패 시에도 아래 안내 toast 경로를 시도한다.
+  }
+  // 시작 시 미뤘던 안내 toast를 1회 띄워 /resume·만료·다른 세션 문서에서 안내가 사라지지 않게 한다.
+  try {
+    const available = await latest($)
+    const root = await $.session.root()
+    const since = await read($, sinceAtom)
+    // 이번 대화가 시작된 뒤 만든 문서(첫 프롬프트 전 /tk-handoff 등)는 "이전" 문서가 아니므로 안내하지 않는다.
+    const isEarlier = available !== null && (since === 0 || available.createdAt <= since)
+    if (available !== null && isEarlier && isHandoffPath(root, available.path) && (await $.fs.exists(available.path))) {
+      if ((await $.store.get(await consumedKey($))) !== available.path) {
+        $.ui.toast(tr(await read($, langAtom), 'toast.available', { time: formatTime(available.createdAt) }))
+      }
+    }
+  } catch {
+    // 안내 toast 실패도 다음 훅으로 번지지 않게 한다.
+  }
+}
+
 /** load 대기 중이면 이번 프롬프트에 붙일 파일 내용을, 아니면 null(대기는 1회로 해제). */
 const takePending = async ($: EngineInterface): Promise<string | null> => {
   if (!(await read($, pendingAtom)) || !(await isOn($))) {
     return null
   }
   await update($, pendingAtom, () => false)
+  const isAuto = (await read($, autoAtom)) === 'armed'
+  if (isAuto) {
+    await update($, autoAtom, () => 'done')
+  }
   const info = await read($, handoffAtom)
   if (info === null || !isHandoffPath(await $.session.root(), info.path) || !(await $.fs.exists(info.path))) {
     return null
   }
   const text = await $.fs.read(info.path)
-  return text.trim() === '' ? null : handoffContext(info.path, text)
+  if (text.trim() === '') {
+    return null
+  }
+  try {
+    await $.store.set(await consumedKey($), info.path)
+  } catch {
+    // 기록 실패해도 이번 첨부는 진행한다.
+  }
+  if (isAuto) {
+    try {
+      $.ui.toast(tr(await read($, langAtom), 'toast.autoAttached', { time: formatTime(info.createdAt) }))
+    } catch {
+      // 알림 실패도 첨부를 막지 않는다.
+    }
+  }
+  return handoffContext(info.path, text, isAuto)
+}
+
+/**
+ * M7 새 대화 자동 첨부 예약.
+ *
+ * M4 코치(`willAttachContext`)보다 먼저 돌아야 하므로 `src/index.ts`에서 `registerComposer`보다 앞에 등록한다.
+ */
+export const registerHandoffAutoLoad = (on: On): void => {
+  on('prompt.submit', { origin: { kind: 'composer' } }, async ($, e, next) => {
+    try {
+      await ensureRestored($)
+      await armAutoLoad($, e)
+    } catch {
+      // 엔진 제약 3번: next 전 실패는 같은 플러그인의 M4·M7·M2·M3 훅을 건너뛰게 하므로 삼킨다. 자동 첨부만 빠진다.
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
 }
 
 /**
  * M7 Auto-handoff.
  *
  * 컨텍스트 사용률이 75% 이상이 된 첫 답변 뒤(세션당 1회) 또는 `/tk-handoff`로 `$.model.fork`에 인수인계 문서를 쓰게 해
- * `{project}/.claude/takgon/handoff/`에 저장한다. 새 세션에서는 최신본을 안내하고, `/tk-handoff load`면 다음 프롬프트
- * 1회에 문서를 context로 붙인다. 임계 판정은 `session.measure`(M6 전용) 대신 `turn.complete`에서 한다.
+ * `{project}/.claude/takgon/handoff/`에 저장한다. 새 세션·`/clear` 뒤 첫 프롬프트에는 24시간 이내의 최신본을
+ * 자동으로 첨부하고(`/tk-handoff auto on|off`), `/tk-handoff load`면 다음 프롬프트 1회에 수동 첨부한다.
+ * 임계 판정은 `session.measure`(M6 전용) 대신 `turn.complete`에서 한다.
  */
 export const registerHandoff = (on: On): void => {
   // 자동 생성과 수동 `/tk-handoff`가 같이 쓴다. 시작 시각을 남겨 GENERATING_STUCK_MS가 지나면 끝난 것으로 본다.

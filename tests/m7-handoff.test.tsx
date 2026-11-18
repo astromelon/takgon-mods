@@ -1,15 +1,18 @@
-import type { On } from 'claude-code'
+import type { On, SessionMessage } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import {
+  AUTO_LOAD_MAX_AGE_MS,
   buildForkPrompt,
   formatStamp,
   handoffContext,
   handoffFileName,
+  isAutoCandidate,
   isHandoffPath,
   parseHandoffArgs,
   shouldTrigger,
   summarize,
+  toAutoLoad,
   toThreshold,
 } from '../src/m7-handoff/logic'
 
@@ -42,12 +45,37 @@ describe('handoff 순수 로직', () => {
     expect(toThreshold('30')).toBe(75)
   })
 
-  test('/tk-handoff threshold 인자 해석', () => {
+  test('/tk-handoff threshold·auto 인자 해석', () => {
     expect(parseHandoffArgs('threshold')).toEqual({ kind: 'threshold', value: null })
     expect(parseHandoffArgs('threshold 30')).toEqual({ kind: 'threshold', value: 30 })
     expect(parseHandoffArgs('threshold 0')).toBe('usage')
     expect(parseHandoffArgs('threshold abc')).toBe('usage')
+    expect(parseHandoffArgs('auto')).toEqual({ kind: 'auto', value: null })
+    expect(parseHandoffArgs('auto on')).toEqual({ kind: 'auto', value: true })
+    expect(parseHandoffArgs('auto OFF')).toEqual({ kind: 'auto', value: false })
+    expect(parseHandoffArgs('auto maybe')).toBe('usage')
+    expect(parseHandoffArgs('auto on x')).toBe('usage')
     expect(parseHandoffArgs('show')).toBe('show')
+  })
+
+  test('toAutoLoad는 undefined·true를 켜짐, false만 꺼짐으로 본다', () => {
+    expect(toAutoLoad(undefined)).toBe(true)
+    expect(toAutoLoad(true)).toBe(true)
+    expect(toAutoLoad(false)).toBe(false)
+  })
+
+  test('isAutoCandidate는 미소비·24시간 이내·대화 시작 이전 문서만 허용한다', () => {
+    const N = 200_000_000
+    const HOUR = 3_600_000
+    const path = 'C:/proj/.claude/takgon/handoff/20261012-0805.md'
+    const base = { path, summary: '요약', createdAt: N - HOUR }
+    expect(isAutoCandidate(base, undefined, N, 0)).toBe(true)
+    expect(isAutoCandidate(base, path, N, 0)).toBe(false)
+    expect(isAutoCandidate({ ...base, createdAt: N - AUTO_LOAD_MAX_AGE_MS }, undefined, N, 0)).toBe(true)
+    expect(isAutoCandidate({ ...base, createdAt: N - AUTO_LOAD_MAX_AGE_MS - 1 }, undefined, N, 0)).toBe(false)
+    expect(isAutoCandidate({ ...base, createdAt: N + 1 }, undefined, N, 0)).toBe(false)
+    expect(isAutoCandidate(base, undefined, N, N - 2 * HOUR)).toBe(false)
+    expect(isAutoCandidate(base, undefined, N, N)).toBe(true)
   })
 
   test('프롬프트에 섹션과 핀·PR·이슈·미완료 작업을 넣는다', () => {
@@ -91,6 +119,15 @@ describe('handoff 순수 로직', () => {
     expect(lines[2]).toBe('````')
     expect(lines.at(-1)).toBe('````')
     expect(lines.slice(3, -1).join('\n')).toBe('```markdown\n## 목표\n```')
+
+    const autoOut = handoffContext(path, '  \n```markdown\n## 목표\n```\n  ', true)
+    const autoLines = autoOut.split('\n')
+    expect(autoLines[0]).toContain(path)
+    expect(autoLines[0]).toContain('automatically')
+    expect(autoLines[0]).not.toContain('/tk-handoff load')
+    expect(autoLines[2]).toBe('````')
+    expect(autoLines.at(-1)).toBe('````')
+    expect(autoLines.slice(3, -1).join('\n')).toBe('```markdown\n## 목표\n```')
   })
 })
 
@@ -110,6 +147,7 @@ type World = {
   /** 값이 있으면 `model.fork`가 이 약속이 풀릴 때까지 기다린다(생성이 겹치는 상황을 만든다). */
   forkGate: { wait?: Promise<void>; started?: () => void }
   context: (readonly string[] | undefined)[]
+  messages: SessionMessage[]
 }
 
 /** 엔진은 Windows에서 fs 경로를 역슬래시로 바꿔 넘기므로 비교용으로 `/`로 맞춘다. */
@@ -149,9 +187,11 @@ const engine = (
     isForkOk: { value: true },
     forkGate: {},
     context: [],
+    messages: [],
   }
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.root', () => ({ value: ROOT }))
+  on('session.messages', () => ({ value: world.messages }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('session.usage', () => ({
     value: { startedAt: 0, context: { window: 200_000, percent: world.percent.value }, rateLimits: [] },
@@ -348,11 +388,16 @@ describe('수동 실행과 load', () => {
   test('새 세션은 store의 최신본 파일이 있으면 toast로 안내하고, 없으면 load가 안내한다', HOOK_TIMEOUT, async ($, on) => {
     const path = `${DIR}/handoff/20261011-1800.md`
     const latest = { path, summary: '요약', createdAt: 1 }
-    const world = engine(on, { 'p/b1a59c26/m7/latest': latest })
+    // 수동 안내 경로를 시험한다(자동 첨부 끔).
+    const world = engine(on, { 'p/b1a59c26/m7/latest': latest, 'g/m7/auto': false })
     world.files.set(path, '이전 문서')
     mock.clock(on)
     await $.session.start(START)
     expect(world.toasts.join('\n')).toContain('/tk-handoff load')
+    expect(world.toasts.filter(text => text.includes('/tk-handoff load'))).toHaveLength(1)
+    // 첫 프롬프트에서 안내가 다시 뜨지 않는다(시작 때 이미 안내함).
+    await $.prompt.submit({ text: '이어서', wait: false, origin: { kind: 'composer' } })
+    expect(world.toasts.filter(text => text.includes('/tk-handoff load'))).toHaveLength(1)
 
     world.files.delete(path)
     const out = await $.command.run({ command: 'tk-handoff', args: 'load', ...RUN })
@@ -376,13 +421,15 @@ describe('수동 실행과 load', () => {
 describe('/clear 뒤 복원', () => {
   test('state가 비어 있으면(session.start 없음) 첫 프롬프트에서 최신본을 다시 안내한다', HOOK_TIMEOUT, async ($, on) => {
     const path = `${DIR}/handoff/20261011-1800.md`
-    const world = engine(on, { 'p/b1a59c26/m7/latest': { path, summary: '요약', createdAt: 1 } })
+    // 수동 안내 경로를 시험한다(자동 첨부 끔).
+    const world = engine(on, { 'p/b1a59c26/m7/latest': { path, summary: '요약', createdAt: 1 }, 'g/m7/auto': false })
     world.files.set(path, '이전 문서')
     mock.clock(on)
 
     await $.prompt.submit({ text: '이어서 작업', wait: false, origin: { kind: 'composer' } })
 
     expect(world.toasts.join('\n')).toContain('/tk-handoff load')
+    expect(world.toasts.filter(text => text.includes('/tk-handoff load'))).toHaveLength(1)
   })
 })
 
@@ -404,5 +451,187 @@ describe('빈 store 첫 사용', () => {
     const saved = sets.filter(one => one.key === 'p/b1a59c26/m7/latest')
     expect(saved).toHaveLength(1)
     expect(saved[0]?.value).toMatchObject({ path: `${DIR}/handoff/20261012-0905.md` })
+  })
+})
+
+describe('새 대화 자동 첨부', () => {
+  const NOW = new Date(2026, 9, 12, 9, 5).getTime()
+  const HOUR = 3_600_000
+  const PATH = `${DIR}/handoff/20261012-0805.md`
+  const LATEST = { path: PATH, summary: '요약', createdAt: NOW - HOUR }
+  const BODY = '## 목표\n이전 작업'
+  const PROMPT = { wait: false, origin: { kind: 'composer' } } as const
+
+  test('기본 켜짐이면 첫 프롬프트에 1회 자동 첨부하고 consumed를 남긴다', HOOK_TIMEOUT, async ($, on) => {
+    const sets: { key: string; value: unknown }[] = []
+    const world = engine(on, { 'p/b1a59c26/m7/latest': LATEST }, sets)
+    world.files.set(PATH, BODY)
+    mock.clock(on, { now: NOW })
+    await $.session.start(START)
+    expect(world.toasts.join('\n')).not.toContain('/tk-handoff load')
+
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+    expect(world.context[0]).toEqual([handoffContext(PATH, BODY, true)])
+    expect(world.toasts.join('\n')).toContain('자동으로 첨부')
+    expect(world.toasts.join('\n')).not.toContain('/tk-handoff load')
+
+    await $.prompt.submit({ text: '다음', ...PROMPT })
+    expect(world.context[1] ?? []).toHaveLength(0)
+    expect(sets.filter(one => one.key === 'p/b1a59c26/m7/consumed')).toEqual([
+      { key: 'p/b1a59c26/m7/consumed', value: PATH },
+    ])
+  })
+
+  test('session.start가 없어도(/clear 경로) 첫 프롬프트에 자동 첨부한다', HOOK_TIMEOUT, async ($, on) => {
+    const world = engine(on, { 'p/b1a59c26/m7/latest': LATEST })
+    world.files.set(PATH, BODY)
+    mock.clock(on, { now: NOW })
+
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+    expect(world.context[0]).toEqual([handoffContext(PATH, BODY, true)])
+    expect(world.toasts.filter(text => text.includes('자동으로 첨부'))).toHaveLength(1)
+    expect(world.toasts.join('\n')).not.toContain('/tk-handoff load')
+  })
+
+  test('이미 consumed에 기록된 문서면 붙이지 않고 안내 toast도 띄우지 않는다', HOOK_TIMEOUT, async ($, on) => {
+    const world = engine(on, { 'p/b1a59c26/m7/latest': LATEST, 'p/b1a59c26/m7/consumed': PATH })
+    world.files.set(PATH, BODY)
+    mock.clock(on, { now: NOW })
+    await $.session.start(START)
+
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+    expect(world.context[0] ?? []).toHaveLength(0)
+    expect(world.toasts.join('\n')).not.toContain('/tk-handoff load')
+    expect(world.toasts.join('\n')).not.toContain('자동으로 첨부')
+  })
+
+  test('24시간이 지난 문서면 붙이지 않고 첫 프롬프트에 안내 toast를 1회 띄운다', HOOK_TIMEOUT, async ($, on) => {
+    const expired = { path: PATH, summary: '요약', createdAt: NOW - 25 * HOUR }
+    const world = engine(on, { 'p/b1a59c26/m7/latest': expired })
+    world.files.set(PATH, BODY)
+    mock.clock(on, { now: NOW })
+    await $.session.start(START)
+    expect(world.toasts.join('\n')).not.toContain('/tk-handoff load')
+
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+    expect(world.context[0] ?? []).toHaveLength(0)
+    const available = world.toasts.filter(text => text.includes('/tk-handoff load'))
+    expect(available).toHaveLength(1)
+
+    await $.prompt.submit({ text: '다음', ...PROMPT })
+    expect(world.toasts.filter(text => text.includes('/tk-handoff load'))).toHaveLength(1)
+  })
+
+  test('이미 assistant 응답이 있으면(/resume 경로) 붙이지 않고 첫 프롬프트에 안내 toast를 1회 띄운다', HOOK_TIMEOUT, async ($, on) => {
+    const world = engine(on, { 'p/b1a59c26/m7/latest': LATEST })
+    world.files.set(PATH, BODY)
+    world.messages = [
+      { role: 'user', text: '이전 질문', toolUses: [] },
+      { role: 'assistant', text: '이전 응답', toolUses: [] },
+    ]
+    mock.clock(on, { now: NOW })
+    await $.session.start(START)
+    expect(world.toasts.join('\n')).not.toContain('/tk-handoff load')
+
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+    expect(world.context[0] ?? []).toHaveLength(0)
+    expect(world.toasts.filter(text => text.includes('/tk-handoff load'))).toHaveLength(1)
+  })
+
+  test('문서 내용이 공백뿐이면 예약·첨부하지 않고 consumed도 쓰지 않는다', HOOK_TIMEOUT, async ($, on) => {
+    const sets: { key: string; value: unknown }[] = []
+    const world = engine(on, { 'p/b1a59c26/m7/latest': LATEST }, sets)
+    world.files.set(PATH, '   \n\t  ')
+    mock.clock(on, { now: NOW })
+    await $.session.start(START)
+
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+    expect(world.context[0] ?? []).toHaveLength(0)
+    expect(sets.filter(one => one.key === 'p/b1a59c26/m7/consumed')).toHaveLength(0)
+  })
+
+  test('병렬 세션: 대화 시작보다 늦게 만든 문서는 붙이지 않는다', HOOK_TIMEOUT, async ($, on) => {
+    const world = engine(on, {
+      'p/b1a59c26/m7/latest': LATEST,
+      'g/core/modules': { integrations: false },
+    })
+    world.files.set(PATH, BODY)
+    const clock = mock.clock(on, { now: NOW - 2 * HOUR })
+    await $.session.start(START)
+    await clock.set(NOW)
+
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+    expect(world.context[0] ?? []).toHaveLength(0)
+    // 이번 대화가 시작된 뒤 만든 문서는 "이전" 문서가 아니므로 안내도 하지 않는다(기능 전에도 안내는 시작 시점에만 했다).
+    expect(world.toasts.filter(text => text.includes('/tk-handoff load'))).toHaveLength(0)
+  })
+
+  test('/tk-handoff auto [on|off] 명령과 비활성 설정을 처리한다', HOOK_TIMEOUT, async ($, on) => {
+    const sets: { key: string; value: unknown }[] = []
+    const world = engine(on, { 'p/b1a59c26/m7/latest': LATEST }, sets)
+    world.files.set(PATH, BODY)
+    mock.clock(on, { now: NOW })
+    await $.session.start(START)
+
+    expect((await $.command.run({ command: 'tk-handoff', args: 'auto', ...RUN })).text).toContain('켜짐')
+    expect(sets.filter(one => one.key === 'g/m7/auto')).toHaveLength(0)
+
+    expect((await $.command.run({ command: 'tk-handoff', args: 'auto off', ...RUN })).text).toContain('꺼짐')
+    expect(sets.filter(one => one.key === 'g/m7/auto')).toEqual([{ key: 'g/m7/auto', value: false }])
+
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+    expect(world.context[0] ?? []).toHaveLength(0)
+    expect(world.toasts.filter(text => text.includes('/tk-handoff load'))).toHaveLength(1)
+
+    expect((await $.command.run({ command: 'tk-handoff', args: 'auto on', ...RUN })).text).toContain('켜짐')
+  })
+
+  test('첫 제출이 로컬 명령이면 붙이지 않고 다음 일반 프롬프트에 붙인다', HOOK_TIMEOUT, async ($, on) => {
+    const world = engine(on, { 'p/b1a59c26/m7/latest': LATEST })
+    world.files.set(PATH, BODY)
+    mock.clock(on, { now: NOW })
+    await $.session.start(START)
+
+    await $.prompt.submit({ text: '/mods', command: { name: 'mods', args: '' }, ...PROMPT })
+    expect(world.context[0] ?? []).toHaveLength(0)
+
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+    expect(world.context[1]).toEqual([handoffContext(PATH, BODY, true)])
+  })
+
+  test('handoff 모듈이 꺼져 있으면 붙이지 않고 consumed도 쓰지 않는다', HOOK_TIMEOUT, async ($, on) => {
+    const sets: { key: string; value: unknown }[] = []
+    const world = engine(on, { 'p/b1a59c26/m7/latest': LATEST, 'g/core/modules': { handoff: false } }, sets)
+    world.files.set(PATH, BODY)
+    mock.clock(on, { now: NOW })
+    await $.session.start(START)
+
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+    expect(world.context[0] ?? []).toHaveLength(0)
+    expect(sets.filter(one => one.key === 'p/b1a59c26/m7/consumed')).toHaveLength(0)
+    expect(world.toasts.join('\n')).not.toContain('/tk-handoff load')
+  })
+
+  test('첫 프롬프트 전에 /tk-handoff load를 했으면 수동 문구로 붙이고 자동 첨부 toast는 없다', HOOK_TIMEOUT, async ($, on) => {
+    const world = engine(on, { 'p/b1a59c26/m7/latest': LATEST })
+    world.files.set(PATH, BODY)
+    mock.clock(on, { now: NOW })
+    await $.session.start(START)
+
+    await $.command.run({ command: 'tk-handoff', args: 'load', ...RUN })
+    await $.prompt.submit({ text: '이어서', ...PROMPT })
+
+    expect(world.context[0]).toEqual([handoffContext(PATH, BODY)])
+    expect(world.toasts.join('\n')).not.toContain('자동으로 첨부')
+    expect(world.toasts.join('\n')).not.toContain('/tk-handoff load')
+  })
+
+  test('잘못된 인자에는 auto [on|off]를 포함한 usage를 돌려준다', HOOK_TIMEOUT, async ($, on) => {
+    engine(on)
+    mock.clock(on, { now: NOW })
+    await $.session.start(START)
+
+    const out = await $.command.run({ command: 'tk-handoff', args: 'x', ...RUN })
+    expect(out.text).toContain('auto [on|off]')
   })
 })

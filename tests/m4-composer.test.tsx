@@ -511,6 +511,25 @@ describe('Prompt-coach', () => {
     expect(world.asks).toHaveLength(1)
   })
 
+  test('새 대화 첫 프롬프트에 인수인계 자동 첨부가 예약되면 묻지 않고, 다음 프롬프트는 다시 판정한다', HOOK_TIMEOUT, async ($, on) => {
+    const handoffPath = 'C:/proj/.claude/takgon/handoff/20261012-1430.md'
+    const latestKey = projectKey(projectId('C:/proj'), 'm7', 'latest')
+    const now = 1_000_000_000
+    const world = engine(on, { [latestKey]: { path: handoffPath, summary: '요약', createdAt: now - 60_000 } })
+    on('fs.exists', ($, e) => ({ value: e.path.replace(/\\/g, '/') === handoffPath }))
+    on('fs.read', ($, e) => ({ value: e.path.replace(/\\/g, '/') === handoffPath ? '## 다음 단계\n- 이어서' : '' }))
+    mock.clock(on, { now })
+    coach(on, world, AMBIGUOUS, '취소')
+    await $.session.start(START)
+
+    await $.prompt.submit({ text: '고쳐줘', ...COMPOSER })
+    expect(world.asks).toHaveLength(0)
+    expect(world.completes).toBe(0)
+
+    await $.prompt.submit({ text: '고쳐줘', ...COMPOSER })
+    expect(world.asks).toHaveLength(1)
+  })
+
   test('M7을 끄면 load 대기 플래그가 남아 있어도 다시 판정한다', HOOK_TIMEOUT, async ($, on) => {
     const handoffPath = 'C:/proj/.claude/takgon/handoff/20261012-1430.md'
     const latestKey = projectKey(projectId('C:/proj'), 'm7', 'latest')
