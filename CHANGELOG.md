@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.4.16] - 2026-11-18
+
 ### Changed
 - CI와 `tools/ci-local.mjs`의 고정 Claude Code 버전을 2.1.326에서 2.1.327로 올렸다(로컬 2.1.327에서 validate·test 211건·probe_catch·probe_clear_state 통과).
 
