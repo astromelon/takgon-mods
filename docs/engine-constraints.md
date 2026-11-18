@@ -54,9 +54,10 @@ takgon-mods(0.1.0 → 0.2.0)를 만들고 실제 세션에서 점검하며 확�
     맨 바깥에 놓인다(로컬 로그: `seated outermost: the organization is team`). 로그인 없이 도는 CI 러너에서는 놓이지 않으므로
     user tier의 `classic.*` 훅이 건너뛰어지지 않고 그대로 실행된다(`CLASSIC-PROBE SessionStart ran source=startup`).
     엔진 동작이 바뀐 것이 아니라 로그인 없는 환경에서는 이 제약이 발생하지 않는 것이다. 판정 조건식 전체는 읽지 않았고,
-    개인(Pro/Max) 계정에서의 동작은 확인하지 못했다.
+    개인(Pro/Max) 계정에서의 동작은 확인하지 못했다. (당시 기준. Pro는 아래 2026-11-18 항목에서 확인)
+  - Pro 계정(실측, 2026-11-18, 로컬 Windows 11, Claude Code 2.1.327): Claude Pro 로그인 상태의 `probe_classic` 1회에서 debug 로그에 `cc-plugin-sec-default@builtin not seated: no managed settings and not a Team or Enterprise organization (pro)`가 찍히고 훅 본문이 실행돼(`CLASSIC-PROBE SessionStart ran source=startup`) probe가 실패했다. 로컬 `tools/e2e/logs`의 debug 로그로 보면 `(pro)` not seated 줄은 2026-11-13~11-18 로그 37개(이 항목을 쓰기 직전에 센 수)에, `seated outermost: the organization is team`은 2026-10-12~11-10 로그 49개에 있어, 이 PC의 로그인 계정이 11-10과 11-13 사이에 Team에서 Pro로 바뀐 것으로 보인다. 따라서 Pro 개인 계정에서도 이 제약은 생기지 않는다(Max는 미확인). `classic.*`를 쓰지 않는 우회는 Team·Enterprise 사용자를 위해 유지한다.
   - 대응: CI(`.github/workflows/ci.yml`)의 e2e probe 단계에서 `probe_classic`을 제외했다(`132dfd6`).
-    제약 1번 감시는 로컬에서 수동으로 돌린다. 따라서 이 제약은 로컬 환경에서만 실측으로 확인된 것이며, CI 결과로는 감시되지 않는다.
+    제약 1번 감시는 로컬에서 수동으로 돌린다. 로컬도 Team·Enterprise 조직(또는 managed settings) 로그인 상태여야 의미가 있다. 따라서 이 제약은 로컬 환경에서만 실측으로 확인된 것이며, CI 결과로는 감시되지 않는다.
 
 ## 2. `/clear` 뒤 `$.state` 전체 초기화, 재초기화 이벤트 없음
 

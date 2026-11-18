@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Changed
+- `tools/e2e`: `handoff` 시나리오의 저장 toast 판정을 화면 문자열 대신 debug 로그(`$.ui.toast`)로 바꿔, toast 상자 줄바꿈 때문에 toast가 떴는데도 실패하던 오탐을 없앴다.
+- 문서: Claude Pro 개인 계정에서는 엔진 제약 1번(`classic.*` bypass)이 생기지 않는다는 실측(2026-11-18, 로컬 2.1.327, 1회)을 `docs/engine-constraints.md`·`tools/e2e/README.md`에 적었다. `probe_classic`은 Team·Enterprise 로그인에서 돌린다.
+
 ## [0.4.18] - 2026-11-18
 
 ### Added
