@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Changed
+- CI와 `tools/ci-local.mjs`의 고정 Claude Code 버전을 2.1.326에서 2.1.327로 올렸다(로컬 2.1.327에서 validate·test 211건·probe_catch·probe_clear_state 통과).
+
 ### Fixed
 - M4: 다른 모듈이 맥락을 붙일 프롬프트(M7 `/tk-handoff load` 대기, M3 `/edit` 대상 지정, M2 콘솔 에러 첨부 예정)는 프롬프트 코치가 판정하지 않는다. `/tk-handoff load` 뒤 "이어서 진행해."가 모호하다는 질문에 막혀 첨부 문서로 이어 가지 못하던 문제다(2.1.327 실세션 확인).
 - M4: "이어서", "이어서 진행해" 같은 확정 응답은 코치가 묻지 않는다.

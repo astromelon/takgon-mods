@@ -74,7 +74,7 @@ Claude Code용 개인 생산성 mods 플러그인. 모듈 8개를 한 플러그�
 [`astromelon/takgon-marketplace`](https://github.com/astromelon/takgon-marketplace)이고, 플러그인 본체는 이 저장소
 (`astromelon/takgon-mods`)다. 마켓플레이스를 분리한 이유는 아래 EPERM 항목을 본다.
 
-Claude Code 2.1.323 이상이 필요하다(`plugin.json`의 `engines`). 2.1.322 이하는 이 조건을 읽지 못해 설치는 되지만 동작을 보장하지 않는다. CI는 2.1.326으로 검증한다.
+Claude Code 2.1.323 이상이 필요하다(`plugin.json`의 `engines`). 2.1.322 이하는 이 조건을 읽지 못해 설치는 되지만 동작을 보장하지 않는다. CI는 2.1.327로 검증한다.
 
 Claude Code 터미널 세션의 프롬프트에서:
 
@@ -306,7 +306,7 @@ node tools/ci-local.mjs --install-deps   # e2e 의존성(pywinpty, pyte)을 먼�
 node tools/ci-local.mjs --tsc            # CI에 없는 타입 체크를 덧붙인다
 ```
 
-e2e는 Windows 전용 하네스(의사 터미널)라 Windows에서만 돌고, CI는 Claude Code 2.1.326으로 고정이라 로컬 버전이 다르면
+e2e는 Windows 전용 하네스(의사 터미널)라 Windows에서만 돌고, CI는 Claude Code 2.1.327로 고정이라 로컬 버전이 다르면
 경고가 나온다.
 
 - 설계와 결정 사항: `SPEC.md`

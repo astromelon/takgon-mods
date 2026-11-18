@@ -5,13 +5,13 @@
 // 순서는 CI와 같다: 릴리스 버전·태그 검사 → validate → test → e2e 하네스 단위 테스트 → e2e probe.
 // 기본은 첫 실패에서 멈춘다. --keep-going은 끝까지 돌려 요약만 낸다.
 // --install-deps는 e2e 의존성(pip install)을 먼저 설치한다(CI의 해당 단계). --tsc는 CI에 없는 타입 체크를 덧붙인다.
-// CI는 Claude Code 2.1.326 고정이다. 로컬 버전이 다르면 아래에서 경고한다.
+// CI는 Claude Code 2.1.327 고정이다. 로컬 버전이 다르면 아래에서 경고한다.
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const CI_CLAUDE_VERSION = '2.1.326';
+const CI_CLAUDE_VERSION = '2.1.327';
 
 const flags = new Set(process.argv.slice(2));
 const isKeepGoing = flags.has('--keep-going');

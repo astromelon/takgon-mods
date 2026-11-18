@@ -39,7 +39,7 @@ jobs:
 
       # 테스트를 검증한 Claude Code 버전으로 고정한다. 올릴 때는 로컬에서 validate·test를 먼저 통과시킨다.
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code@2.1.326
+        run: npm install -g @anthropic-ai/claude-code@2.1.327
 
       - name: Version
         run: claude --version
