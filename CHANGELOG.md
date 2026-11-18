@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Added
+- CI: 매주 Claude Code 새 버전을 확인해 그 버전으로 validate·test·probe를 돌리고 결과를 `engine-watch` 이슈로 남기는 워크플로를 추가했다(고정 버전은 자동으로 올리지 않는다).
+
 ## [0.4.17] - 2026-11-18
 
 ### Fixed

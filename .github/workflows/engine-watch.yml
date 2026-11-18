@@ -1,0 +1,307 @@
+# 매주(또는 수동 실행 시) npm 최신 Claude Code 버전으로 validate·test·하네스·probe를 시험해 이슈로 보고한다.
+# CI(.github/workflows/ci.yml) 고정 버전은 자동으로 올리지 않는다(로컬 검증 후 수동으로 올린다).
+# 본문/코멘트 표식(<!-- engine-watch:<버전> -->)으로 같은 버전은 다시 보고하지 않는다(취소된 실행은 표식을 남기지 않는다).
+# 이미 보고한 버전을 다시 검사하려면 수동 실행에서 force를 켠다.
+
+name: Engine watch
+
+on:
+  schedule:
+    - cron: '17 0 * * 1' # 매주 월 09:17 KST
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '이미 보고한 버전도 다시 검사한다'
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: engine-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check new Claude Code version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    timeout-minutes: 5
+    outputs:
+      pinned: ${{ steps.v.outputs.pinned }}
+      latest: ${{ steps.v.outputs.latest }}
+      newer: ${{ steps.v.outputs.newer }}
+      skip: ${{ steps.issue.outputs.skip }}
+      open: ${{ steps.issue.outputs.open }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Compare npm latest against pinned version
+        id: v
+        shell: bash
+        run: |
+          PINNED=$(grep -oE 'claude-code@[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/ci.yml | head -1 | cut -d@ -f2 | tr -d '\r' || true)
+          LATEST=$(npm view @anthropic-ai/claude-code version | tr -d '\r' || true)
+          if [[ ! "$PINNED" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid pinned version: $PINNED"
+            exit 1
+          fi
+          if [[ ! "$LATEST" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid latest version: $LATEST"
+            exit 1
+          fi
+          NEWER=$(node -e 'const [a,b]=process.argv.slice(1).map(v=>v.split(".").map(Number));for(let i=0;i<3;i++){if(a[i]!==b[i]){console.log(a[i]>b[i]);process.exit(0)}}console.log(false)' "$LATEST" "$PINNED" | tr -d '\r')
+          {
+            echo "pinned=$PINNED"
+            echo "latest=$LATEST"
+            echo "newer=$NEWER"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$NEWER" != "true" ]; then
+            echo "최신 $LATEST ≤ 고정 $PINNED: 할 일 없음"
+          fi
+
+      - name: Check existing engine-watch issues
+        id: issue
+        if: steps.v.outputs.newer == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.v.outputs.latest }}
+          GH_REPO: ${{ github.repository }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          LATEST=$(printf '%s' "$LATEST" | tr -d '\r')
+          MARKER="<!-- engine-watch:$LATEST -->"
+          ISSUES_JSON=$(gh issue list --label engine-watch --state all --limit 100 --json number,state || echo '[]')
+          if [ -z "$ISSUES_JSON" ]; then
+            ISSUES_JSON='[]'
+          fi
+          OPEN=$(printf '%s' "$ISSUES_JSON" | jq -r '[.[] | select(.state == "OPEN")] | sort_by(.number) | last | .number // ""' | tr -d '\r')
+          NUMBERS=$(printf '%s' "$ISSUES_JSON" | jq -r '.[].number' | tr -d '\r')
+          SKIP="false"
+          for n in $NUMBERS; do
+            BODY_TEXT=$(gh issue view "$n" --json body,comments -q '.body, .comments[].body' | tr -d '\r' || true)
+            if [[ "$BODY_TEXT" == *"$MARKER"* ]]; then
+              SKIP="true"
+              break
+            fi
+          done
+          if [ "$(printf '%s' "$FORCE" | tr -d '\r')" = "true" ]; then
+            SKIP="false"
+          fi
+          {
+            echo "skip=$SKIP"
+            echo "open=$OPEN"
+          } >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test new Claude Code version (windows)
+    needs: check
+    if: needs.check.outputs.newer == 'true' && needs.check.outputs.skip == 'false'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    env:
+      DISABLE_AUTOUPDATER: '1'
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+      LATEST: ${{ needs.check.outputs.latest }}
+    outputs:
+      ok: ${{ steps.report.outputs.ok }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Install Claude Code
+        id: install
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          npm install -g "@anthropic-ai/claude-code@$env:LATEST"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          claude --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install e2e dependencies
+        continue-on-error: true
+        run: pip install -r tools/e2e/requirements.txt
+
+      - name: Validate plugin
+        id: validate
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          claude plugin validate . 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\validate.log"
+          exit $LASTEXITCODE
+
+      - name: Test plugin
+        id: test
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          claude plugin test . 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\test.log"
+          exit $LASTEXITCODE
+
+      - name: Test e2e harness
+        id: harness
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          python -m unittest discover -s tools/e2e -p "test_*.py" 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\harness.log"
+          exit $LASTEXITCODE
+
+      - name: Run e2e probes
+        id: probes
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          python tools/e2e/run.py probe_catch probe_clear_state 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\probes.log"
+          exit $LASTEXITCODE
+
+      - name: Build test report
+        id: report
+        if: always()
+        shell: bash
+        env:
+          INSTALL: ${{ steps.install.outcome }}
+          VALIDATE: ${{ steps.validate.outcome }}
+          TEST: ${{ steps.test.outcome }}
+          HARNESS: ${{ steps.harness.outcome }}
+          PROBES: ${{ steps.probes.outcome }}
+        run: |
+          INSTALL=$(printf '%s' "$INSTALL" | tr -d '\r')
+          VALIDATE=$(printf '%s' "$VALIDATE" | tr -d '\r')
+          TEST=$(printf '%s' "$TEST" | tr -d '\r')
+          HARNESS=$(printf '%s' "$HARNESS" | tr -d '\r')
+          PROBES=$(printf '%s' "$PROBES" | tr -d '\r')
+
+          if [ "$INSTALL" = "success" ] && [ "$VALIDATE" = "success" ] && [ "$TEST" = "success" ] && [ "$HARNESS" = "success" ] && [ "$PROBES" = "success" ]; then
+            OK="true"
+            STATUS_LINE="결과: 전체 통과"
+          else
+            OK="false"
+            STATUS_LINE="결과: 실패 있음"
+          fi
+          echo "ok=$OK" >> "$GITHUB_OUTPUT"
+
+          ZWS=$(printf '\xe2\x80\x8b')
+          append_section() {
+            local title="$1" outcome="$2" log="$3"
+            printf '### %s: %s\n\n' "$title" "$outcome"
+            if [ -n "$log" ] && [ -f "$log" ]; then
+              printf '~~~~text\n'
+              tail -n 40 "$log" | tr -d '\r' | cut -c1-400 | LC_ALL=C sed -e 's/~~~~/~ ~ ~ ~/g' -e "s/@/@${ZWS}/g"
+              printf '\n~~~~\n\n'
+            fi
+          }
+
+          {
+            printf '%s\n\n' "$STATUS_LINE"
+            append_section "install" "$INSTALL" ""
+            append_section "validate" "$VALIDATE" "$RUNNER_TEMP/validate.log"
+            append_section "test" "$TEST" "$RUNNER_TEMP/test.log"
+            append_section "harness" "$HARNESS" "$RUNNER_TEMP/harness.log"
+            append_section "probes" "$PROBES" "$RUNNER_TEMP/probes.log"
+          } > "$RUNNER_TEMP/report.md"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: engine-watch-report
+          path: ${{ runner.temp }}/report.md
+          overwrite: true
+
+  report:
+    name: Report results to GitHub issue
+    needs: [check, test]
+    if: always() && needs.check.outputs.newer == 'true' && needs.check.outputs.skip == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: engine-watch-report
+          path: report
+
+      - name: Create or update engine-watch issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PINNED: ${{ needs.check.outputs.pinned }}
+          LATEST: ${{ needs.check.outputs.latest }}
+          OPEN: ${{ needs.check.outputs.open }}
+          TEST_RESULT: ${{ needs.test.result }}
+          OK: ${{ needs.test.outputs.ok }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          PINNED=$(printf '%s' "$PINNED" | tr -d '\r')
+          LATEST=$(printf '%s' "$LATEST" | tr -d '\r')
+          OPEN=$(printf '%s' "$OPEN" | tr -d '\r')
+          TEST_RESULT=$(printf '%s' "$TEST_RESULT" | tr -d '\r')
+          OK=$(printf '%s' "$OK" | tr -d '\r')
+          RUN_URL=$(printf '%s' "$RUN_URL" | tr -d '\r')
+
+          gh label create engine-watch --color BFD4F2 --description "Claude Code 새 버전 감시" --force
+
+          if [ "$OK" = "true" ]; then
+            SUMMARY="전체 통과"
+          else
+            SUMMARY="실패 있음 (test job: $TEST_RESULT)"
+          fi
+
+          {
+            # 취소된 실행은 표식을 남기지 않아 다음 실행에서 다시 검사한다.
+            if [ "$TEST_RESULT" != "cancelled" ]; then
+              printf '<!-- engine-watch:%s -->\n\n' "$LATEST"
+            fi
+            printf 'CI 고정 %s → npm 최신 %s\n' "$PINNED" "$LATEST"
+            printf '결과: %s\n' "$SUMMARY"
+            printf '실행: %s\n' "$RUN_URL"
+            printf 'Changelog: https://code.claude.com/docs/en/changelog\n\n'
+            printf -- '- [ ] changelog에서 %s 이후 mods·플러그인 항목 확인\n' "$PINNED"
+            printf -- '- [ ] 로컬에서 `node tools/ci-local.mjs --keep-going --tsc` 통과\n'
+            printf -- '- [ ] CI 고정 버전·문서(ci.yml, tools/ci-local.mjs, CLAUDE.md, README) 올리기\n\n'
+            if [ -f report/report.md ]; then
+              cat report/report.md
+            else
+              printf '검사 보고서가 없다(설치 실패·시간 초과 등). 실행 로그를 본다.\n'
+            fi
+          } > body.md
+          # 이슈 본문 상한(65,536자)보다 작게 자른다.
+          head -c 60000 body.md > body.trim && mv body.trim body.md
+
+          if [ -z "$OPEN" ]; then
+            gh issue create --title "엔진 감시: Claude Code $LATEST" --label engine-watch --body-file body.md
+          else
+            gh issue comment "$OPEN" --body-file body.md
+            gh issue edit "$OPEN" --title "엔진 감시: Claude Code $LATEST"
+          fi
+
+          if [ "$OK" != "true" ]; then
+            exit 1
+          fi

@@ -30,7 +30,7 @@ python tools/e2e/run.py probe_classic probe_catch         # 이름으로 개별 
 ```
 
 CI(`.github/workflows/ci.yml`)는 Windows에서 Claude Code 2.1.327 고정으로 validate → test → 하네스 단위 테스트 → probe 2개(`probe_classic`은 CI에서 제외, 로컬 전용)를
-돈다. 테스트가 Windows 절대 경로(`C:/proj`)를 가정하므로 Linux에서는 실패한다. 엔진 버전을 올릴 때는 로컬에서 먼저 통과시킨다.
+돈다. 테스트가 Windows 절대 경로(`C:/proj`)를 가정하므로 Linux에서는 실패한다. 엔진 버전을 올릴 때는 로컬에서 먼저 통과시킨다. `.github/workflows/engine-watch.yml`이 매주 월요일 npm 최신 버전이 고정 버전보다 새로우면 그 버전으로 validate·test·하네스 단위 테스트·probe를 돌려 `engine-watch` 라벨 이슈에 결과를 남긴다(열린 이슈가 있으면 코멘트, 고정 버전은 자동으로 올리지 않는다, 다시 검사하려면 수동 실행에서 `force`). 저장소가 60일 동안 활동이 없으면 GitHub이 이 예약 실행을 끄므로 Actions 탭에서 다시 켠다.
 
 ## 아키텍처
 
