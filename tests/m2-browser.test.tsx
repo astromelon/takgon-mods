@@ -298,6 +298,91 @@ describe('M2 훅', () => {
     expect(contexts[1] ?? []).toHaveLength(0)
   })
 
+  test('(M4 코치) M2를 끄면 콘솔 첨부가 켜져 있어도 다시 판정한다', async ($, on) => {
+    engine(on)
+    let completes = 0
+    let asks = 0
+    on('model.complete', () => {
+      completes += 1
+      return {
+        value: {
+          isAnswered: true,
+          text: '{"ambiguous":true,"refined":"src/app.ts 고쳐줘"}',
+          usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        },
+      }
+    })
+    on('tool.call', { tool: 'AskUserQuestion' }, () => {
+      asks += 1
+      return { deny: 'dismissed' }
+    })
+    const contexts: (readonly string[] | undefined)[] = []
+    on('prompt.submit', ($, e) => {
+      contexts.push(e.context)
+      return { text: e.text, context: e.context }
+    })
+    await $.session.start(START)
+    await $.command.run(browse(URL))
+
+    const ui = await $.ui.mount({ ...pane, surface: 'terminal' } as never)
+    await ui.press({ key: 'attach-console' })
+    expect((await ui.find({ type: 'Button', key: 'attach-console' }))?.props.label).toContain('켜짐')
+
+    await $.command.run({
+      command: 'mods',
+      args: 'browser off',
+      origin: { kind: 'composer' },
+      presentation: { isFullscreen: false, columns: 120 },
+    })
+    await $.prompt.submit({ text: '고쳐줘', wait: false, origin: { kind: 'composer' } })
+
+    expect(completes).toBe(1)
+    expect(asks).toBe(1)
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0] ?? []).toHaveLength(0)
+  })
+
+  test('(M4 코치) 콘솔 에러가 0건이면 첨부를 켜도 다시 판정한다', async ($, on) => {
+    engine(on, {
+      stdout: JSON.stringify({ ok: true, status: 200, title: 'Vite App', consoleErrors: [], screenshot: SHOT }),
+    })
+    let completes = 0
+    let asks = 0
+    on('model.complete', () => {
+      completes += 1
+      return {
+        value: {
+          isAnswered: true,
+          text: '{"ambiguous":true,"refined":"src/app.ts 고쳐줘"}',
+          usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        },
+      }
+    })
+    on('tool.call', { tool: 'AskUserQuestion' }, () => {
+      asks += 1
+      return { deny: 'dismissed' }
+    })
+    const contexts: (readonly string[] | undefined)[] = []
+    on('prompt.submit', ($, e) => {
+      contexts.push(e.context)
+      return { text: e.text, context: e.context }
+    })
+    await $.session.start(START)
+    await $.command.run(browse(URL))
+
+    const ui = await $.ui.mount({ ...pane, surface: 'terminal' } as never)
+    await ui.press({ key: 'attach-console' })
+    expect((await ui.find({ type: 'Button', key: 'attach-console' }))?.props.label).toContain('켜짐')
+    expect(await ui.find({ type: 'Text', text: /콘솔 에러 없음/ })).toBeDefined()
+
+    await $.prompt.submit({ text: '고쳐줘', wait: false, origin: { kind: 'composer' } })
+
+    expect(completes).toBe(1)
+    expect(asks).toBe(1)
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0] ?? []).toHaveLength(0)
+  })
+
   test('모듈이 꺼지면 /browse는 안내만 하고 실행하지 않는다', async ($, on) => {
     const { runs } = engine(on, { store: { 'g/core/modules': { browser: false } } })
     await $.session.start(START)

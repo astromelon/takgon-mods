@@ -537,6 +537,19 @@ describe('Prompt-coach', () => {
     expect(world.asks).toHaveLength(0)
     expect(world.completes).toBe(0)
   })
+
+  test('M3를 끄면 /edit 대상이 남아 있어도 다시 판정한다', async ($, on) => {
+    const world = engine(on)
+    on('fs.read', () => ({ value: 'line1\nline2\n' }))
+    coach(on, world, AMBIGUOUS, '취소')
+    await $.session.start(START)
+    await $.command.run({ command: 'edit', args: 'src/a.ts:1-2', ...RUN })
+    await $.command.run({ command: 'mods', args: 'edit off', ...RUN })
+
+    await $.prompt.submit({ text: '고쳐줘', ...COMPOSER })
+    expect(world.asks).toHaveLength(1)
+    expect(world.completes).toBe(1)
+  })
 })
 
 describe('빈 store 첫 사용', () => {
