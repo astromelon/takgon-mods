@@ -257,6 +257,47 @@ describe('M2 훅', () => {
     expect(contexts[1] ?? []).toHaveLength(0)
   })
 
+  test('(M4 코치) 콘솔 첨부가 예정이면 프롬프트 코치가 묻지 않는다', async ($, on) => {
+    engine(on)
+    let completes = 0
+    let asks = 0
+    on('model.complete', () => {
+      completes += 1
+      return {
+        value: {
+          isAnswered: true,
+          text: '{"ambiguous":true,"refined":"src/app.ts 고쳐줘"}',
+          usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        },
+      }
+    })
+    on('tool.call', { tool: 'AskUserQuestion' }, () => {
+      asks += 1
+      return { deny: 'dismissed' }
+    })
+    const contexts: (readonly string[] | undefined)[] = []
+    on('prompt.submit', ($, e) => {
+      contexts.push(e.context)
+      return { text: e.text, context: e.context }
+    })
+    await $.session.start(START)
+    await $.command.run(browse(URL))
+
+    const ui = await $.ui.mount({ ...pane, surface: 'terminal' } as never)
+    await ui.press({ key: 'attach-console' })
+
+    const submit = { text: '고쳐줘', wait: false, origin: { kind: 'composer' } } as const
+    await $.prompt.submit(submit)
+    expect(asks).toBe(0)
+    expect(completes).toBe(0)
+    expect(contexts[0]?.join('\n')).toContain('Uncaught TypeError')
+
+    await $.prompt.submit(submit)
+    expect(completes).toBe(1)
+    expect(asks).toBe(1)
+    expect(contexts[1] ?? []).toHaveLength(0)
+  })
+
   test('모듈이 꺼지면 /browse는 안내만 하고 실행하지 않는다', async ($, on) => {
     const { runs } = engine(on, { store: { 'g/core/modules': { browser: false } } })
     await $.session.start(START)

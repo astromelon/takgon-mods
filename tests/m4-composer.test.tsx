@@ -508,6 +508,23 @@ describe('Prompt-coach', () => {
     expect(world.asks).toHaveLength(1)
   })
 
+  test('M7을 끄면 load 대기 플래그가 남아 있어도 다시 판정한다', async ($, on) => {
+    const handoffPath = 'C:/proj/.claude/takgon/handoff/20261012-1430.md'
+    const latestKey = projectKey(projectId('C:/proj'), 'm7', 'latest')
+    const world = engine(on, { [latestKey]: { path: handoffPath, summary: '요약', createdAt: 1 } })
+    on('fs.exists', ($, e) => ({ value: e.path.replace(/\\/g, '/') === handoffPath }))
+    on('fs.read', ($, e) => ({ value: e.path.replace(/\\/g, '/') === handoffPath ? '## 다음 단계\n- 이어서' : '' }))
+    coach(on, world, AMBIGUOUS, '취소')
+    await $.session.start(START)
+    await $.command.run({ command: 'tk-handoff', args: 'load', ...RUN })
+
+    await $.command.run({ command: 'mods', args: 'handoff off', ...RUN })
+
+    await $.prompt.submit({ text: '고쳐줘', ...COMPOSER })
+    expect(world.asks).toHaveLength(1)
+    expect(world.completes).toBe(1)
+  })
+
   test('/edit 대상이 있으면 묻지 않는다', async ($, on) => {
     const world = engine(on)
     on('fs.read', () => ({ value: 'line1\nline2\n' }))
